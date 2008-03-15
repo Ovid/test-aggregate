@@ -224,17 +224,17 @@ sub new {
         local $" = ', ';
         $class->_croak("Unknown keys to &new:  (@keys)");
     }
-    if ( $has_code_attributes ) {
+    if ($has_code_attributes) {
         eval "use Data::Dump::Streamer";
-        if ( $@ && $self->_dump ) {
-            my $error = $@;
-            my $dump  = $self->_dump;
-            warn <<"            END_WARNING";
+        if ( my $error = $@ ) {
+            $self->{_no_streamer} = 1;
+            if ( my $dump = $self->_dump ) {
+                warn <<"                END_WARNING";
 Dump file ($dump) cannot be generated.  A code attributes was requested but
 we cannot load Data::Dump::Streamer:  $error.
-            END_WARNING
-            $self->{dump}         = '';
-            $self->{_no_streamer} = 1;
+                END_WARNING
+                $self->{dump} = '';
+            }
         }
     }
 
@@ -556,7 +556,7 @@ pulled from our tests:
  my $dump = 'dump.t';
  
  my ( $startup, $shutdown ) = ( 0, 0 );
- my ( $setup, $teardown ) = ( 0, 0 );
+ my ( $setup,   $teardown ) = ( 0, 0 );
  my $tests = Test::Aggregate->new(
      {
          dirs     => 'aggtests',

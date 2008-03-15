@@ -1,6 +1,9 @@
 Revision history for Test-Aggregate
 
 0.11
+        - Fixed bug where not having Data::Dump::Streamer installed would
+          cause test failures if 'dump' was not set.  Reported by numerous
+          CPAN smoke testers :)
         - Added optional (and experimental) Perl::Tidy support.
         - Fixed broken 'verbose'.  The 'ok/not ok' message was being output
           regardless of verbose setting.
