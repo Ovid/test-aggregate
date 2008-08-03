@@ -490,6 +490,7 @@ package $package;
 sub run_the_tests {
 \$Test::Aggregate::Builder::FILE_FOR{$package} = '$test';
 $set_filenames
+# line 1 "$test"
 $test_code
 $see_if_tests_passed
 }

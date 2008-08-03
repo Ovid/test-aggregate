@@ -1,6 +1,9 @@
 Revision history for Test-Aggregate
 
-0.32_01
+0.32_01 03/08/2008
+        - Added line directives to aggregated tests to ensure that
+          Test::Builder::ok can now report the correct filename and line
+          number.
         - set_filenames => 1 is now the default behavior.
         - Split the Test::Builder override into its own package.
 

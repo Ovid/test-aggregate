@@ -122,6 +122,7 @@ package aggtests00loadt;
 sub run_the_tests {
 $Test::Aggregate::Builder::FILE_FOR{aggtests00loadt} = 'aggtests/00-load.t';
 local $0 = 'aggtests/00-load.t';
+# line 1 "aggtests/00-load.t"
 
 
 use Test::More tests => 2;
@@ -145,6 +146,7 @@ package aggtestsboilerplatet;
 sub run_the_tests {
 $Test::Aggregate::Builder::FILE_FOR{aggtestsboilerplatet} = 'aggtests/boilerplate.t';
 local $0 = 'aggtests/boilerplate.t';
+# line 1 "aggtests/boilerplate.t"
 
 
 use strict;
@@ -205,6 +207,7 @@ package aggtestscheck_plant;
 sub run_the_tests {
 $Test::Aggregate::Builder::FILE_FOR{aggtestscheck_plant} = 'aggtests/check_plan.t';
 local $0 = 'aggtests/check_plan.t';
+# line 1 "aggtests/check_plan.t"
 
 
 use strict;
@@ -232,6 +235,7 @@ package aggtestsslow_loadt;
 sub run_the_tests {
 $Test::Aggregate::Builder::FILE_FOR{aggtestsslow_loadt} = 'aggtests/slow_load.t';
 local $0 = 'aggtests/slow_load.t';
+# line 1 "aggtests/slow_load.t"
 
 
 use strict;
@@ -252,6 +256,7 @@ package aggtestssubst;
 sub run_the_tests {
 $Test::Aggregate::Builder::FILE_FOR{aggtestssubst} = 'aggtests/subs.t';
 local $0 = 'aggtests/subs.t';
+# line 1 "aggtests/subs.t"
 
 
 use strict;
