@@ -1,14 +1,19 @@
+my %PLAN_FOR;
+my %TESTS_RUN;
+my %FILE_FOR;
+my %TEST_NOWARNINGS_LOADED;
+
 {
-    $ENV{TEST_AGGREGATE} = 1;
+    BEGIN { $ENV{TEST_AGGREGATE} = 1 };
 
     END {   # for VMS
         delete $ENV{TEST_AGGREGATE};
     }
     use Test::Builder;
-    use Test::Builder::Module;
 
     no warnings 'redefine';
 
+    # Need a tailing plan
     END {
 
         # This works because it's a singleton
@@ -16,6 +21,13 @@
         my $tests   = $builder->current_test;
         $builder->_print("1..$tests\n");
     }
+
+    # The following is done to get around the fact that deferred plans are not
+    # supported.  Unfortunately, there's no clean way to override this, but
+    # this allows us to minimize the monkey patching.
+
+    # XXX We fully-qualify the sub names because PAUSE won't index what it
+    # thinks is an attempt to hijeck the Test::Builder namespace.
 
     sub Test::Builder::_plan_check {
         my $self = shift;
@@ -26,42 +38,86 @@
 
     sub Test::Builder::no_header { 1 }
 
+    # prevent the 'you tried to plan twice' errors
+    my $plan;
+    BEGIN { $plan = \&Test::Builder::plan }
     sub Test::Builder::plan {
-        my ( $self, $cmd, $arg ) = @_;
+        delete $_[0]->{Have_Plan};
+        my $callpack = caller(1);
+        if ( 'tests' eq ( $_[1] || '' ) ) {
+            $PLAN_FOR{$callpack} = $_[2];
+            if ( $TEST_NOWARNINGS_LOADED{$callpack} ) {
 
-        return unless $cmd;
-
-        local $Test::Builder::Level = $Test::Builder::Level + 1;
-
-        # XXX need to disable the plan check
-        #if( $self->{Have_Plan} ) {
-        #    $self->croak("You tried to plan twice");
-        #}
-
-        if ( $cmd eq 'no_plan' ) {
-            $self->no_plan;
-        }
-        elsif ( $cmd eq 'skip_all' ) {
-            return $self->skip_all($arg);
-        }
-        elsif ( $cmd eq 'tests' ) {
-            if ($arg) {
-                local $Test::Builder::Level = $Test::Builder::Level + 1;
-                return $self->expected_tests($arg);
-            }
-            elsif ( !defined $arg ) {
-                $self->croak("Got an undefined number of tests");
-            }
-            elsif ( !$arg ) {
-                $self->croak("You said to run 0 tests");
+                # Test::NoWarnings was loaded before plan() was called, so it
+                # didn't have a change to decrement it
+                $PLAN_FOR{$callpack}--;
             }
         }
-        else {
-            my @args = grep { defined } ( $cmd, $arg );
-            $self->croak("plan() doesn't understand @args");
-        }
+        $plan->(@_);
+    }
 
-        return 1;
+    # Called in _ending and prevents the 'you tried to run a test without a
+    # plan' error.
+    my $_sanity_check;
+    BEGIN { $_sanity_check = \&Test::Builder::_sanity_check }
+    sub Test::Builder::_sanity_check {
+        $_[0]->{Have_Plan} = 1;
+        $_sanity_check->(@_);
+    }
+
+    my $ok;
+    BEGIN { $ok = \&Test::Builder::ok }
+    sub Test::Builder::ok {
+        __check_test_count();
+        $ok->(@_);
+    }
+
+    my $skip;
+    BEGIN { $skip = \&Test::Builder::skip }
+    sub Test::Builder::skip {
+        __check_test_count();
+        $skip->(@_);
+    }
+
+    sub __check_test_count {
+        return unless '0';
+        my $callpack;
+        my $stack_level = 1;
+        while ( my ( $package, $filename, $line, $subroutine )
+            = caller($stack_level) )
+        {
+            last if 'Test::Aggregate' eq $package;
+
+            # XXX Because these blocks aren't really subroutines, caller()
+            # doesn't report what you expect.
+            last
+              if $callpack && $subroutine =~ /::(?:BEGIN|END)\z/;
+            $callpack = $package;
+            $stack_level++;
+        }
+        {
+            no warnings 'uninitialized';
+            $TESTS_RUN{$callpack} += 1;
+        }
+    }
+
+    END {
+        if ( 0 ) {
+            while ( my ( $package, $plan ) = each %PLAN_FOR ) {
+
+                # The following line is needed because it's sometimes the case
+                # in larger systems that plans and tests are specified in
+                # libraries (and not the test files) which multiple test files
+                # use.  As a result, it can be extremely difficult to track
+                # this.  We may change this in the future.
+                next unless my $file = $FILE_FOR{$package};
+                Test::More::is(
+                    $TESTS_RUN{$package} || 0,
+                    $plan || 0,
+                    "Test ($file) should have the correct plan"
+                );
+            }
+        }
     }
 }
 my $TEST_AGGREGATE_STARTUP;
@@ -113,35 +169,77 @@ $TEST_AGGREGATE_TEARDOWN=sub {
 }
 
 my $LAST_TEST_NUM = 0;
-
 if ( __FILE__ eq 'dump.t' ) {
-    $TEST_AGGREGATE_STARTUP->();
+    package Test::Aggregate; # ;)
+    my $builder = Test::Builder->new;
+    $TEST_AGGREGATE_STARTUP->() if __FILE__ eq 'dump.t';
     $TEST_AGGREGATE_SETUP->('aggtests/00-load.t');
-    Test::More::ok(1, "******** running tests for aggtests/00-load.t ********");
-    aggtests00loadt->run_the_tests;
+    Test::More::diag("******** running tests for aggtests/00-load.t ********") if $ENV{TEST_VERBOSE};
+    eval { aggtests00loadt->run_the_tests };
+    if ( my $error = $@ ) {
+        Test::More::ok( 0, "Error running (aggtests/00-load.t):  $error" );
+        # XXX this should be fine since these keys are not actually used
+        # internally.
+        $builder->{XXX_test_failed}       = 0;
+        $builder->{TEST_MOST_test_failed} = 0;
+    }
     $TEST_AGGREGATE_TEARDOWN->('aggtests/00-load.t');
 
     $TEST_AGGREGATE_SETUP->('aggtests/boilerplate.t');
-    Test::More::ok(1, "******** running tests for aggtests/boilerplate.t ********");
-    aggtestsboilerplatet->run_the_tests;
+    Test::More::diag("******** running tests for aggtests/boilerplate.t ********") if $ENV{TEST_VERBOSE};
+    eval { aggtestsboilerplatet->run_the_tests };
+    if ( my $error = $@ ) {
+        Test::More::ok( 0, "Error running (aggtests/boilerplate.t):  $error" );
+        # XXX this should be fine since these keys are not actually used
+        # internally.
+        $builder->{XXX_test_failed}       = 0;
+        $builder->{TEST_MOST_test_failed} = 0;
+    }
     $TEST_AGGREGATE_TEARDOWN->('aggtests/boilerplate.t');
 
+    $TEST_AGGREGATE_SETUP->('aggtests/check_plan.t');
+    Test::More::diag("******** running tests for aggtests/check_plan.t ********") if $ENV{TEST_VERBOSE};
+    eval { aggtestscheck_plant->run_the_tests };
+    if ( my $error = $@ ) {
+        Test::More::ok( 0, "Error running (aggtests/check_plan.t):  $error" );
+        # XXX this should be fine since these keys are not actually used
+        # internally.
+        $builder->{XXX_test_failed}       = 0;
+        $builder->{TEST_MOST_test_failed} = 0;
+    }
+    $TEST_AGGREGATE_TEARDOWN->('aggtests/check_plan.t');
+
     $TEST_AGGREGATE_SETUP->('aggtests/slow_load.t');
-    Test::More::ok(1, "******** running tests for aggtests/slow_load.t ********");
-    aggtestsslow_loadt->run_the_tests;
+    Test::More::diag("******** running tests for aggtests/slow_load.t ********") if $ENV{TEST_VERBOSE};
+    eval { aggtestsslow_loadt->run_the_tests };
+    if ( my $error = $@ ) {
+        Test::More::ok( 0, "Error running (aggtests/slow_load.t):  $error" );
+        # XXX this should be fine since these keys are not actually used
+        # internally.
+        $builder->{XXX_test_failed}       = 0;
+        $builder->{TEST_MOST_test_failed} = 0;
+    }
     $TEST_AGGREGATE_TEARDOWN->('aggtests/slow_load.t');
 
     $TEST_AGGREGATE_SETUP->('aggtests/subs.t');
-    Test::More::ok(1, "******** running tests for aggtests/subs.t ********");
-    aggtestssubst->run_the_tests;
+    Test::More::diag("******** running tests for aggtests/subs.t ********") if $ENV{TEST_VERBOSE};
+    eval { aggtestssubst->run_the_tests };
+    if ( my $error = $@ ) {
+        Test::More::ok( 0, "Error running (aggtests/subs.t):  $error" );
+        # XXX this should be fine since these keys are not actually used
+        # internally.
+        $builder->{XXX_test_failed}       = 0;
+        $builder->{TEST_MOST_test_failed} = 0;
+    }
     $TEST_AGGREGATE_TEARDOWN->('aggtests/subs.t');
 
-    $TEST_AGGREGATE_SHUTDOWN->();
+    $TEST_AGGREGATE_SHUTDOWN->() if __FILE__ eq 'dump.t';
 }
 {
 #################### beginning of aggtests/00-load.t ####################
 package aggtests00loadt;
 sub run_the_tests {
+$FILE_FOR{aggtests00loadt} = 'aggtests/00-load.t';
 
 
 
@@ -156,21 +254,7 @@ BEGIN {
 
 diag("Testing Test::Aggregate $Test::Aggregate::VERSION, Perl $], $^X");
 
-{
-    my $builder = Test::Builder->new;   # singleton
-    my $tests   = $builder->current_test;
-    my $failed = 0;
-    my @summary = $builder->summary;
-    foreach my $passed ( @summary[$LAST_TEST_NUM .. $tests - 1] ) {
-        if ( not $passed ) {
-            $failed = 1;
-            last;
-        }
-    }
-    my $ok = $failed ? "not ok - aggtests/00-load.t" : "    ok - aggtests/00-load.t";
-    Test::More::diag($ok) if 0;
-    $LAST_TEST_NUM = $tests;
-}
+
 }
 #################### end of aggtests/00-load.t ####################
 }
@@ -178,6 +262,7 @@ diag("Testing Test::Aggregate $Test::Aggregate::VERSION, Perl $], $^X");
 #################### beginning of aggtests/boilerplate.t ####################
 package aggtestsboilerplatet;
 sub run_the_tests {
+$FILE_FOR{aggtestsboilerplatet} = 'aggtests/boilerplate.t';
 
 
 
@@ -229,28 +314,42 @@ sub module_boilerplate_ok {
 
 module_boilerplate_ok('lib/Test/Aggregate.pm');
 
-{
-    my $builder = Test::Builder->new;   # singleton
-    my $tests   = $builder->current_test;
-    my $failed = 0;
-    my @summary = $builder->summary;
-    foreach my $passed ( @summary[$LAST_TEST_NUM .. $tests - 1] ) {
-        if ( not $passed ) {
-            $failed = 1;
-            last;
-        }
-    }
-    my $ok = $failed ? "not ok - aggtests/boilerplate.t" : "    ok - aggtests/boilerplate.t";
-    Test::More::diag($ok) if 0;
-    $LAST_TEST_NUM = $tests;
-}
+
 }
 #################### end of aggtests/boilerplate.t ####################
+}
+{
+#################### beginning of aggtests/check_plan.t ####################
+package aggtestscheck_plant;
+sub run_the_tests {
+$FILE_FOR{aggtestscheck_plant} = 'aggtests/check_plan.t';
+
+
+
+use strict;
+use warnings;
+
+use lib 'lib', 't/lib';
+use Test::More tests => 4;
+
+BEGIN { ok 1 }
+END   { ok 1 }
+ok 1;
+
+SKIP: {
+    skip 'checking plan', 1;
+    ok 1;
+}
+
+
+}
+#################### end of aggtests/check_plan.t ####################
 }
 {
 #################### beginning of aggtests/slow_load.t ####################
 package aggtestsslow_loadt;
 sub run_the_tests {
+$FILE_FOR{aggtestsslow_loadt} = 'aggtests/slow_load.t';
 
 
 
@@ -262,21 +361,7 @@ use Test::More tests => 1;
 use Slow::Loading::Module;
 ok 1, 'slow loading module loaded';
 
-{
-    my $builder = Test::Builder->new;   # singleton
-    my $tests   = $builder->current_test;
-    my $failed = 0;
-    my @summary = $builder->summary;
-    foreach my $passed ( @summary[$LAST_TEST_NUM .. $tests - 1] ) {
-        if ( not $passed ) {
-            $failed = 1;
-            last;
-        }
-    }
-    my $ok = $failed ? "not ok - aggtests/slow_load.t" : "    ok - aggtests/slow_load.t";
-    Test::More::diag($ok) if 0;
-    $LAST_TEST_NUM = $tests;
-}
+
 }
 #################### end of aggtests/slow_load.t ####################
 }
@@ -284,6 +369,7 @@ ok 1, 'slow loading module loaded';
 #################### beginning of aggtests/subs.t ####################
 package aggtestssubst;
 sub run_the_tests {
+$FILE_FOR{aggtestssubst} = 'aggtests/subs.t';
 
 
 
@@ -302,21 +388,7 @@ use Slow::Loading::Module;
 
 is whee(), 'whee!', 'subs work!';
 
-{
-    my $builder = Test::Builder->new;   # singleton
-    my $tests   = $builder->current_test;
-    my $failed = 0;
-    my @summary = $builder->summary;
-    foreach my $passed ( @summary[$LAST_TEST_NUM .. $tests - 1] ) {
-        if ( not $passed ) {
-            $failed = 1;
-            last;
-        }
-    }
-    my $ok = $failed ? "not ok - aggtests/subs.t" : "    ok - aggtests/subs.t";
-    Test::More::diag($ok) if 0;
-    $LAST_TEST_NUM = $tests;
-}
+
 }
 #################### end of aggtests/subs.t ####################
 }

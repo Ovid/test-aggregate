@@ -25,11 +25,11 @@ my $tests = Test::Aggregate->new(
         shutdown => sub { $shutdown++ },
         setup    => sub { $setup++ },
         teardown => sub { $teardown++ },
-        dump => 'dump.t',
+        dump     => 'dump.t',
     }
 );
 $tests->run;
 is $startup,  4, 'Startup should be called once';
 is $shutdown, 1, '... as should shutdown';
-is $setup,    7, 'Setup should be called once for each test program';
-is $teardown, 4, '... as should teardown';
+is $setup,    8, 'Setup should be called once for each test program';
+is $teardown, 5, '... as should teardown';

@@ -14,4 +14,5 @@ aggtests/boilerplate.t
 aggtests/00-load.t
 aggtests/slow_load.t
 aggtests/subs.t
+aggtests/check_plan.t
 Makefile.PL

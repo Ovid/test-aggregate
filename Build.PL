@@ -10,12 +10,15 @@ my $builder = Module::Build->new(
     build_requires => {
         'Test::Simple' => 0.74,  # we fail on the common 0.62
     },
+    requires => {
+        'Test::Harness'    => 3.09,
+        'Test::NoWarnings' => 0,
+    },
     recommends => {
         'Data::Dump::Streamer' => 1.11,
         'Perl::Tidy'           => 20060614,
     },
     add_to_cleanup      => [ 'Test-Aggregate-*' ],
-    create_makefile_pl => 'traditional',
 );
 
 $builder->create_build_script();

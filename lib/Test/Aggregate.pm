@@ -4,14 +4,27 @@ use warnings;
 use strict;
 
 use Test::Builder::Module;
-use vars qw(@ISA @EXPORT $VERSION);
-@ISA = qw(Test::Builder::Module);
 use Test::More;
 use Carp 'croak';
 
 use File::Find;
 
+use vars qw(@ISA @EXPORT $VERSION);
+@ISA    = qw(Test::Builder::Module);
 @EXPORT = @Test::More::EXPORT;
+
+BEGIN { $ENV{TEST_AGGREGATE} = 1 };
+
+END {   # for VMS
+    delete $ENV{TEST_AGGREGATE};
+}
+
+# controls whether or not we show individual test program pass/fail
+my %VERBOSE = (
+    none     => 0,
+    failures => 1,
+    all      => 2,
+);
 
 =head1 NAME
 
@@ -19,11 +32,11 @@ Test::Aggregate - Aggregate C<*.t> tests to make them run faster.
 
 =head1 VERSION
 
-Version 0.11
+Version 0.31
 
 =cut
 
-$VERSION = '0.11';
+$VERSION = '0.31';
 
 =head1 SYNOPSIS
 
@@ -67,7 +80,6 @@ tests or simply leave them in your regular test directory.  See how this
 distribution's tests are organized for an example.
 
 Some tests cannot run in an aggregate environment.  These may include
-singletons or code which has deliberate global side-effects.  If so, you can
 test for this with the C<< $ENV{TEST_AGGREGATE} >> variable:
 
  package Some::Package;
@@ -83,13 +95,15 @@ test for this with the C<< $ENV{TEST_AGGREGATE} >> variable:
  
  my $tests = Test::Aggregate->new(
      {
-         dirs          => 'aggtests',
-         verbose       => 1,            # optional, but recommended
-         dump          => 'dump.t',     # optional
-         shuffle       => 1,            # optional
-         matching      => qr/customer/, # optional
-         set_filenames => 1,            # optional
-         tidy          => 1,            # optional
+         dirs            => 'aggtests',
+         verbose         => 1,            # optional, but recommended
+         dump            => 'dump.t',     # optional
+         shuffle         => 1,            # optional
+         matching        => qr/customer/, # optional
+         set_filenames   => 1,            # optional
+         tidy            => 1,            # optional and experimental
+         check_plan      => 1,            # optional and experimental
+         test_nowarnings => 0,            # optional and experimental
      }
  );
  
@@ -118,6 +132,24 @@ much easier to determine which aggregated tests are causing problems.
  t/aggregate.........ok
  t/pod-coverage......ok
  t/pod...............ok
+
+Note that three possible values are allowed for C<verbose>:
+
+=over 4
+
+=item * C<0> (default)
+
+No individual test program success or failure will be displayed.
+
+=item * C<1>
+
+Only failing test programs will have their failure status shown.
+
+=item * C<2>
+
+All test programs will have their success/failure shown.
+
+=back
 
 =item * C<dump> (optional)
 
@@ -153,6 +185,21 @@ slow and possibly buggy.
 If the value of this argument is the name of a file, assumes that this file is
 a C<.perltidyrc> file.
 
+=item * C<check_plan>
+
+If set to a true value, this will force C<Test::Aggregate> to attempt to
+verify that any test which set a plan actually ran the correct number of
+tests.  The code is rather tricky, so this is experimental.
+
+=item * C<test_nowarnings>
+
+Disables C<Test::NoWarnings> (fails if the module cannot be loaded).  This is
+often used in conjunction with C<check_plan> to subtract the extra test added
+by this module.
+
+This is experimental and somewhat problematic.  Let me know if there are any
+problems.
+
 =back
 
 =head2 C<run>
@@ -180,6 +227,7 @@ sub new {
         Test::More::BAIL_OUT("You must supply 'dirs'");
     }
         
+    $arg_for->{test_nowarnings} = 1 unless exists $arg_for->{test_nowarnings};
     my $dirs = delete $arg_for->{dirs};
     $dirs = [$dirs] if 'ARRAY' ne ref $dirs;
 
@@ -187,7 +235,7 @@ sub new {
     if ( $arg_for->{matching} ) {
         $matching = delete $arg_for->{matching};
         unless ( 'Regexp' eq ref $matching ) {
-            $class->_croak("Argument for 'matching' must be a pre-compiled regex");
+            croak("Argument for 'matching' must be a pre-compiled regex");
         }
     }
 
@@ -195,8 +243,7 @@ sub new {
     foreach my $attribute ( $class->_code_attributes ) {
         if ( my $ref = $arg_for->{$attribute} ) {
             if ( 'CODE' ne ref $ref ) {
-                $class->_croak(
-                    "Attribute ($attribute) must be a code reference");
+                croak("Attribute ($attribute) must be a code reference");
             }
             else {
                 $has_code_attributes++;
@@ -205,10 +252,10 @@ sub new {
     }
 
     my $self = bless {
-        dirs         => $dirs,
-        matching     => $matching,
-        _no_streamer => 0,
-        _packages    => [],
+        dirs            => $dirs,
+        matching        => $matching,
+        _no_streamer    => 0,
+        _packages       => [],
     } => $class;
     $self->{$_} = delete $arg_for->{$_} foreach (
         qw/
@@ -217,13 +264,17 @@ sub new {
         shuffle
         verbose
         tidy
+        check_plan
+        test_nowarnings
         /,
         $class->_code_attributes
     );
+
     if ( my @keys = keys %$arg_for ) {
         local $" = ', ';
-        $class->_croak("Unknown keys to &new:  (@keys)");
+        croak("Unknown keys to &new:  (@keys)");
     }
+
     if ($has_code_attributes) {
         eval "use Data::Dump::Streamer";
         if ( my $error = $@ ) {
@@ -241,18 +292,25 @@ we cannot load Data::Dump::Streamer:  $error.
     return $self;
 }
 
-# set form user data
-sub _dump           { shift->{dump} || '' }
-sub _should_shuffle { shift->{shuffle} }
-sub _matching       { shift->{matching} }
-sub _set_filenames  { shift->{set_filenames} }
-sub _dirs           { @{ shift->{dirs} } }
-sub _verbose        { shift->{verbose} ? 1 : 0 }
-sub _startup        { shift->{startup} }
-sub _shutdown       { shift->{shutdown} }
-sub _setup          { shift->{setup} }
-sub _teardown       { shift->{teardown} }
-sub _tidy           { shift->{tidy} }
+# set from user data
+
+sub _check_plan      { shift->{check_plan} || 0 }
+sub _dump            { shift->{dump} || '' }
+sub _should_shuffle  { shift->{shuffle} }
+sub _matching        { shift->{matching} }
+sub _set_filenames   { shift->{set_filenames} }
+sub _dirs            { @{ shift->{dirs} } }
+sub _startup         { shift->{startup} }
+sub _shutdown        { shift->{shutdown} }
+sub _setup           { shift->{setup} }
+sub _teardown        { shift->{teardown} }
+sub _tidy            { shift->{tidy} }
+sub _test_nowarnings { shift->{test_nowarnings} }
+
+sub _verbose        {
+    my $self = shift;
+    $self->{verbose} ? $self->{verbose} : 0;
+}
 
 # set from internal data
 sub _no_streamer    { shift->{_no_streamer} }
@@ -308,11 +366,21 @@ sub run {
     }
 
     $self->_startup->() if $self->_startup;
+    my $builder = Test::Builder->new;
     foreach my $data ($self->_packages) {
         my ( $test, $package ) = @$data;
-        Test::More::ok(1, "******** running tests for $test ********");
+        Test::More::diag("******** running tests for $test ********")
+          if $ENV{TEST_VERBOSE};
         $self->_setup->() if $self->_setup;
-        $package->run_the_tests;
+        eval { $package->run_the_tests };
+        if ( my $error = $@ ) {
+            Test::More::ok( 0, "Error running ($test):  $error" );
+        }
+
+        # XXX this should be fine since these keys are not actually used
+        # internally.
+        $builder->{XXX_test_failed}       = 0;
+        $builder->{TEST_MOST_test_failed} = 0;
         $self->_teardown->() if $self->_teardown;
     }
     $self->_shutdown->() if $self->_shutdown;
@@ -335,7 +403,7 @@ $setup_code
 $teardown_code
 my \$LAST_TEST_NUM = 0;
     END_CODE
-
+    
     my @packages;
     my $separator = '#' x 20;
     
@@ -343,19 +411,26 @@ my \$LAST_TEST_NUM = 0;
 
     my $dump = $self->_dump;
 
-    $code .= "\nif ( __FILE__ eq '$dump' ) {\n";
+    $code .= <<"    END_CODE";
+if ( __FILE__ eq '$dump' ) {
+    package Test::Aggregate; # ;)
+    my \$builder = Test::Builder->new;
+    END_CODE
+
     if ( $startup ) {
-        $code .= "    $startup->();\n";
+        $code .= "    $startup->() if __FILE__ eq '$dump';\n";
     }
     foreach my $test ($self->_get_tests) {
         my $test_code = $self->_slurp($test);
 
-        # get rid of hashbangs as Perl::Tidy all huffy-like and we disregard
-        # them anyway.
+        # get rid of hashbangs as Perl::Tidy gets all huffy-like and we
+        # disregard them anyway.
         $test_code =~ s/\A#![^\n]+//gm;
+
         # Strip __END__ and __DATA__ if there's nothing after it.
         # XXX leaving this out for now as I'm unsure if it's worth it.
         #$test_code =~ s/\n__(?:DATA|END)__\n$//s;
+
         if ( $test_code =~ /^(__(?:DATA|END)__)/m ) {
             Test::More::BAIL_OUT("Test $test not allowed to have $1 token");
         }
@@ -369,8 +444,15 @@ my \$LAST_TEST_NUM = 0;
             $code .= "    $setup->('$test');\n";
         }
         $code .= <<"        END_CODE";
-    Test::More::ok(1, "******** running tests for $test ********");
-    $package->run_the_tests;
+    Test::More::diag("******** running tests for $test ********") if \$ENV{TEST_VERBOSE};
+    eval { $package->run_the_tests };
+    if ( my \$error = \$@ ) {
+        Test::More::ok( 0, "Error running ($test):  \$error" );
+        # XXX this should be fine since these keys are not actually used
+        # internally.
+        \$builder->{XXX_test_failed}       = 0;
+        \$builder->{TEST_MOST_test_failed} = 0;
+    }
         END_CODE
         if ( $teardown ) {
             $code .= "    $teardown->('$test');\n";
@@ -380,13 +462,7 @@ my \$LAST_TEST_NUM = 0;
         my $set_filenames = $self->_set_filenames
             ? "local \$0 = '$test';"
             : '';
-        $test_packages .= <<"        END_CODE";
-{
-$separator beginning of $test $separator
-package $package;
-sub run_the_tests {
-$set_filenames
-$test_code
+        my $see_if_tests_passed = $verbose ? <<"        END_CODE" : '';
 {
     my \$builder = Test::Builder->new;   # singleton
     my \$tests   = \$builder->current_test;
@@ -399,16 +475,28 @@ $test_code
         }
     }
     my \$ok = \$failed ? "not ok - $test" : "    ok - $test";
-    Test::More::diag(\$ok) if $verbose;
+    if ( \$failed or $verbose == $VERBOSE{all} ) {
+        Test::More::diag(\$ok);
+    }
     \$LAST_TEST_NUM = \$tests;
 }
+        END_CODE
+        $test_packages .= <<"        END_CODE";
+{
+$separator beginning of $test $separator
+package $package;
+sub run_the_tests {
+\$FILE_FOR{$package} = '$test';
+$set_filenames
+$test_code
+$see_if_tests_passed
 }
 $separator end of $test $separator
 }
         END_CODE
     }
     if ( $shutdown ) {
-        $code .= "    $shutdown->();\n";
+        $code .= "    $shutdown->() if __FILE__ eq '$dump';\n";
     }
 
     $code .= "}\n$test_packages";
@@ -465,18 +553,50 @@ sub _get_package {
 }
 
 sub _test_builder_override {
-    return <<'END_CODE';
+    my $self = shift;
+
+    my $check_plan              = $self->_check_plan;
+
+    my $disable_test_nowarnings = '';
+    if ( !$self->_test_nowarnings ) {
+        $disable_test_nowarnings = <<'        END_CODE';
+# Look ma, no import!
+BEGIN {
+    require Test::NoWarnings;
+    no warnings 'redefine';
+    *Test::NoWarnings::had_no_warnings = sub { };
+    *Test::NoWarnings::import = sub {
+        my $callpack = caller();
+        if ( $PLAN_FOR{$callpack} ) {
+            $PLAN_FOR{$callpack}--;
+        }
+        $TEST_NOWARNINGS_LOADED{$callpack} = 1;
+    };
+}
+        END_CODE
+    }
+
+    my $code = <<'    END_CODE';
+my %PLAN_FOR;
+my %TESTS_RUN;
+my %FILE_FOR;
+my %TEST_NOWARNINGS_LOADED;
+    END_CODE
+    $code .= <<"    END_CODE";
+$disable_test_nowarnings
+    END_CODE
+    $code .= <<'    END_CODE';
 {
-    $ENV{TEST_AGGREGATE} = 1;
+    BEGIN { $ENV{TEST_AGGREGATE} = 1 };
 
     END {   # for VMS
         delete $ENV{TEST_AGGREGATE};
     }
     use Test::Builder;
-    use Test::Builder::Module;
 
     no warnings 'redefine';
 
+    # Need a tailing plan
     END {
 
         # This works because it's a singleton
@@ -484,6 +604,13 @@ sub _test_builder_override {
         my $tests   = $builder->current_test;
         $builder->_print("1..$tests\n");
     }
+
+    # The following is done to get around the fact that deferred plans are not
+    # supported.  Unfortunately, there's no clean way to override this, but
+    # this allows us to minimize the monkey patching.
+
+    # XXX We fully-qualify the sub names because PAUSE won't index what it
+    # thinks is an attempt to hijeck the Test::Builder namespace.
 
     sub Test::Builder::_plan_check {
         my $self = shift;
@@ -494,45 +621,100 @@ sub _test_builder_override {
 
     sub Test::Builder::no_header { 1 }
 
+    # prevent the 'you tried to plan twice' errors
+    my $plan;
+    BEGIN { $plan = \&Test::Builder::plan }
     sub Test::Builder::plan {
-        my ( $self, $cmd, $arg ) = @_;
+        delete $_[0]->{Have_Plan};
+        my $callpack = caller(1);
+        if ( 'tests' eq ( $_[1] || '' ) ) {
+            $PLAN_FOR{$callpack} = $_[2];
+            if ( $TEST_NOWARNINGS_LOADED{$callpack} ) {
 
-        return unless $cmd;
-
-        local $Test::Builder::Level = $Test::Builder::Level + 1;
-
-        # XXX need to disable the plan check
-        #if( $self->{Have_Plan} ) {
-        #    $self->croak("You tried to plan twice");
-        #}
-
-        if ( $cmd eq 'no_plan' ) {
-            $self->no_plan;
-        }
-        elsif ( $cmd eq 'skip_all' ) {
-            return $self->skip_all($arg);
-        }
-        elsif ( $cmd eq 'tests' ) {
-            if ($arg) {
-                local $Test::Builder::Level = $Test::Builder::Level + 1;
-                return $self->expected_tests($arg);
-            }
-            elsif ( !defined $arg ) {
-                $self->croak("Got an undefined number of tests");
-            }
-            elsif ( !$arg ) {
-                $self->croak("You said to run 0 tests");
+                # Test::NoWarnings was loaded before plan() was called, so it
+                # didn't have a change to decrement it
+                $PLAN_FOR{$callpack}--;
             }
         }
-        else {
-            my @args = grep { defined } ( $cmd, $arg );
-            $self->croak("plan() doesn't understand @args");
-        }
+        $plan->(@_);
+    }
 
-        return 1;
+    # Called in _ending and prevents the 'you tried to run a test without a
+    # plan' error.
+    my $_sanity_check;
+    BEGIN { $_sanity_check = \&Test::Builder::_sanity_check }
+    sub Test::Builder::_sanity_check {
+        $_[0]->{Have_Plan} = 1;
+        $_sanity_check->(@_);
+    }
+
+    my $ok;
+    BEGIN { $ok = \&Test::Builder::ok }
+    sub Test::Builder::ok {
+        __check_test_count();
+        $ok->(@_);
+    }
+
+    my $skip;
+    BEGIN { $skip = \&Test::Builder::skip }
+    sub Test::Builder::skip {
+        __check_test_count();
+        $skip->(@_);
+    }
+
+    sub __check_test_count {
+    END_CODE
+    
+    $code .= <<"    END_CODE";
+        return unless '$check_plan';
+    END_CODE
+
+    $code .= <<'    END_CODE';
+        my $callpack;
+        my $stack_level = 1;
+        while ( my ( $package, $filename, $line, $subroutine )
+            = caller($stack_level) )
+        {
+            last if 'Test::Aggregate' eq $package;
+
+            # XXX Because these blocks aren't really subroutines, caller()
+            # doesn't report what you expect.
+            last
+              if $callpack && $subroutine =~ /::(?:BEGIN|END)\z/;
+            $callpack = $package;
+            $stack_level++;
+        }
+        {
+            no warnings 'uninitialized';
+            $TESTS_RUN{$callpack} += 1;
+        }
+    }
+
+    END {
+    END_CODE
+    $code .= <<"    END_CODE";
+        if ( $check_plan ) {
+    END_CODE
+    $code .= <<'    END_CODE';
+            while ( my ( $package, $plan ) = each %PLAN_FOR ) {
+
+                # The following line is needed because it's sometimes the case
+                # in larger systems that plans and tests are specified in
+                # libraries (and not the test files) which multiple test files
+                # use.  As a result, it can be extremely difficult to track
+                # this.  We may change this in the future.
+                next unless my $file = $FILE_FOR{$package};
+                Test::More::is(
+                    $TESTS_RUN{$package} || 0,
+                    $plan || 0,
+                    "Test ($file) should have the correct plan"
+                );
+            }
+        }
     }
 }
-END_CODE
+    END_CODE
+    return $code;
 }
 
 =head1 SETUP/TEARDOWN
@@ -585,14 +767,15 @@ which expects a code reference:
 
  startup => \&connect_to_database,
 
-This function will be called before any of the tests are run (but after
-C<BEGIN> blocks, I'm afraid).
+This function will be called before any of the tests are run.  It is not run
+in a BEGIN block.
 
 =item * C<shutdown>
 
  shutdown => \&clean_up_temp_files,
 
-This function will be called after all of the tests are run.
+This function will be called after all of the tests are run.  It will not be
+called in an END block.
 
 =item * C<setup>
 
@@ -641,8 +824,30 @@ Unfortunately, due to how this works, the plan is always C<no_plan>.  If
 C<Test::Builder> implements "deferred plans", we can get a bit more safety.
 See
 L<http://groups.google.com/group/perl.qa/browse_thread/thread/d58c49db734844f4/cd18996391acc601?#cd18996391acc601>
-for more information.
+for more information.  We now have an experimental 'check_plan' attribute to
+work around this.
 
+=item * C<Test::NoWarnings>
+
+Great module.  It loves to break aggregated tests since some might have
+warnings when others will not.  You can disable it like this:
+
+ my $tests = Test::Aggregate->new(
+     dirs    => 'aggtests/',
+     startup => sub { $INC{'Test/NoWarnings.pm'} = 1 },
+ );
+
+As an alternative, you can also disable it with:
+
+ my $tests = Test::Aggregate->new({
+    dirs            => 'aggtests',
+    test_nowarnings => 0,
+ });
+
+This is needed when you use C<check_plan> and have C<Test::NoWarnings> used.
+This is because we do work internally to subtract the extra test added by
+C<Test::NoWarnings>.  It's painful and experimental.  Good luck.
+    
 =item * No 'skip_all' tests, please
 
 Tests which potentially 'skip_all' will cause the aggregate test suite to
@@ -729,13 +934,20 @@ internals.  After that, you'll see the code which runs the tests.  It will
 look similar to this:
 
  if ( __FILE__ eq 'dump.t' ) {
-     Test::More::ok(1, "******** running tests for aggtests/boilerplate.t ********");
+     Test::More::diag("******** running tests for aggtests/boilerplate.t ********")
+        if $ENV{TEST_VERBOSE};
      aggtestsboilerplatet->run_the_tests;
-     Test::More::ok(1, "******** running tests for aggtests/subs.t ********");
+
+     Test::More::diag("******** running tests for aggtests/subs.t ********")
+        if $ENV{TEST_VERBOSE};
      aggtestssubst->run_the_tests;
-     Test::More::ok(1, "******** running tests for aggtests/00-load.t ********");
+
+     Test::More::diag("******** running tests for aggtests/00-load.t ********")
+        if $ENV{TEST_VERBOSE};
      aggtests00loadt->run_the_tests;
-     Test::More::ok(1, "******** running tests for aggtests/slow_load.t ********");
+
+     Test::More::diag("******** running tests for aggtests/slow_load.t ********")
+        if $ENV{TEST_VERBOSE};
      aggtestsslow_loadt->run_the_tests;
  }
 
@@ -745,11 +957,39 @@ out which one is actually causing the failure.
 
 =head1 COMMON PITFALLS
 
-=head2 C<BEGIN>, C<CHECK>, C<INIT> and C<END> blocks
+=head2 My Tests Through an Exception But Passed Anyway!
+
+This really isn't a C<Test::Aggregate> problem so much as a general Perl
+problem.  For each test file, C<Test::Aggregate> wraps the tests in an eval
+and checks C<< my $error = $@ >>.  Unfortunately, we sometimes get code like
+this:
+
+  $server->ip_address('apple');
+
+And internally, the 'Server' class throws an exception but uses its own evals
+in a C<DESTROY> block (or something similar) to trap it.  If the code you call
+uses an eval but fails to localize it, it wipes out I<your> eval.  Neat, eh?
+Thus, you never get a chance to see the error.  For various reasons, this
+tends to impact C<Test::Aggregate> when a C<DESTROY> block is triggered and
+calls code which internally uses eval (e.g., C<DBIx::Class>).  You can often
+fix this with:
+
+ DESTROY {
+    local $@ = $@;  # localize but preserve the value
+    my $self = shift;
+    # do whatever you want
+ }
+
+=head2 C<BEGIN> and C<END> blocks
 
 Remember that since the tests are now being run at once, these blocks will no
 longer run on a per-test basis, but will run for the entire aggregated set of
 tests.  You may need to examine these individually to determine the problem.
+  
+=head2 C<CHECK> and C<INIT> blocks.
+
+Sorry, but you can't use these (just as in modperl).  See L<perlmod> for more
+information about them and why they won't work.
 
 =head2 C<Test::NoWarnings>
 
