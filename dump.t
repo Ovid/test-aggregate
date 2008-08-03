@@ -1,125 +1,6 @@
-my %PLAN_FOR;
-my %TESTS_RUN;
-my %FILE_FOR;
-my %TEST_NOWARNINGS_LOADED;
-
-{
-    BEGIN { $ENV{TEST_AGGREGATE} = 1 };
-
-    END {   # for VMS
-        delete $ENV{TEST_AGGREGATE};
-    }
-    use Test::Builder;
-
-    no warnings 'redefine';
-
-    # Need a tailing plan
-    END {
-
-        # This works because it's a singleton
-        my $builder = Test::Builder->new;
-        my $tests   = $builder->current_test;
-        $builder->_print("1..$tests\n");
-    }
-
-    # The following is done to get around the fact that deferred plans are not
-    # supported.  Unfortunately, there's no clean way to override this, but
-    # this allows us to minimize the monkey patching.
-
-    # XXX We fully-qualify the sub names because PAUSE won't index what it
-    # thinks is an attempt to hijeck the Test::Builder namespace.
-
-    sub Test::Builder::_plan_check {
-        my $self = shift;
-
-        # Will this break under threads?
-        $self->{Expected_Tests} = $self->{Curr_Test} + 1;
-    }
-
-    sub Test::Builder::no_header { 1 }
-
-    # prevent the 'you tried to plan twice' errors
-    my $plan;
-    BEGIN { $plan = \&Test::Builder::plan }
-    sub Test::Builder::plan {
-        delete $_[0]->{Have_Plan};
-        my $callpack = caller(1);
-        if ( 'tests' eq ( $_[1] || '' ) ) {
-            $PLAN_FOR{$callpack} = $_[2];
-            if ( $TEST_NOWARNINGS_LOADED{$callpack} ) {
-
-                # Test::NoWarnings was loaded before plan() was called, so it
-                # didn't have a change to decrement it
-                $PLAN_FOR{$callpack}--;
-            }
-        }
-        $plan->(@_);
-    }
-
-    # Called in _ending and prevents the 'you tried to run a test without a
-    # plan' error.
-    my $_sanity_check;
-    BEGIN { $_sanity_check = \&Test::Builder::_sanity_check }
-    sub Test::Builder::_sanity_check {
-        $_[0]->{Have_Plan} = 1;
-        $_sanity_check->(@_);
-    }
-
-    my $ok;
-    BEGIN { $ok = \&Test::Builder::ok }
-    sub Test::Builder::ok {
-        __check_test_count();
-        $ok->(@_);
-    }
-
-    my $skip;
-    BEGIN { $skip = \&Test::Builder::skip }
-    sub Test::Builder::skip {
-        __check_test_count();
-        $skip->(@_);
-    }
-
-    sub __check_test_count {
-        return unless '0';
-        my $callpack;
-        my $stack_level = 1;
-        while ( my ( $package, $filename, $line, $subroutine )
-            = caller($stack_level) )
-        {
-            last if 'Test::Aggregate' eq $package;
-
-            # XXX Because these blocks aren't really subroutines, caller()
-            # doesn't report what you expect.
-            last
-              if $callpack && $subroutine =~ /::(?:BEGIN|END)\z/;
-            $callpack = $package;
-            $stack_level++;
-        }
-        {
-            no warnings 'uninitialized';
-            $TESTS_RUN{$callpack} += 1;
-        }
-    }
-
-    END {
-        if ( 0 ) {
-            while ( my ( $package, $plan ) = each %PLAN_FOR ) {
-
-                # The following line is needed because it's sometimes the case
-                # in larger systems that plans and tests are specified in
-                # libraries (and not the test files) which multiple test files
-                # use.  As a result, it can be extremely difficult to track
-                # this.  We may change this in the future.
-                next unless my $file = $FILE_FOR{$package};
-                Test::More::is(
-                    $TESTS_RUN{$package} || 0,
-                    $plan || 0,
-                    "Test ($file) should have the correct plan"
-                );
-            }
-        }
-    }
-}
+use Test::Aggregate::Builder;
+BEGIN { $Test::Aggregate::Builder::CHECK_PLAN = 0 };
+;
 my $TEST_AGGREGATE_STARTUP;
 {
 my ($startup);
@@ -239,8 +120,8 @@ if ( __FILE__ eq 'dump.t' ) {
 #################### beginning of aggtests/00-load.t ####################
 package aggtests00loadt;
 sub run_the_tests {
-$FILE_FOR{aggtests00loadt} = 'aggtests/00-load.t';
-
+$Test::Aggregate::Builder::FILE_FOR{aggtests00loadt} = 'aggtests/00-load.t';
+local $0 = 'aggtests/00-load.t';
 
 
 use Test::More tests => 2;
@@ -262,8 +143,8 @@ diag("Testing Test::Aggregate $Test::Aggregate::VERSION, Perl $], $^X");
 #################### beginning of aggtests/boilerplate.t ####################
 package aggtestsboilerplatet;
 sub run_the_tests {
-$FILE_FOR{aggtestsboilerplatet} = 'aggtests/boilerplate.t';
-
+$Test::Aggregate::Builder::FILE_FOR{aggtestsboilerplatet} = 'aggtests/boilerplate.t';
+local $0 = 'aggtests/boilerplate.t';
 
 
 use strict;
@@ -322,8 +203,8 @@ module_boilerplate_ok('lib/Test/Aggregate.pm');
 #################### beginning of aggtests/check_plan.t ####################
 package aggtestscheck_plant;
 sub run_the_tests {
-$FILE_FOR{aggtestscheck_plant} = 'aggtests/check_plan.t';
-
+$Test::Aggregate::Builder::FILE_FOR{aggtestscheck_plant} = 'aggtests/check_plan.t';
+local $0 = 'aggtests/check_plan.t';
 
 
 use strict;
@@ -332,12 +213,12 @@ use warnings;
 use lib 'lib', 't/lib';
 use Test::More tests => 4;
 
-BEGIN { ok 1 }
-END   { ok 1 }
-ok 1;
+BEGIN { ok 1, "$0 ***** 1" }
+END   { ok 1, "$0 ***** 4" }
+ok 1, "$0 ***** 2";
 
 SKIP: {
-    skip 'checking plan', 1;
+    skip "checking plan ($0 ***** 3)", 1;
     ok 1;
 }
 
@@ -349,8 +230,8 @@ SKIP: {
 #################### beginning of aggtests/slow_load.t ####################
 package aggtestsslow_loadt;
 sub run_the_tests {
-$FILE_FOR{aggtestsslow_loadt} = 'aggtests/slow_load.t';
-
+$Test::Aggregate::Builder::FILE_FOR{aggtestsslow_loadt} = 'aggtests/slow_load.t';
+local $0 = 'aggtests/slow_load.t';
 
 
 use strict;
@@ -369,8 +250,8 @@ ok 1, 'slow loading module loaded';
 #################### beginning of aggtests/subs.t ####################
 package aggtestssubst;
 sub run_the_tests {
-$FILE_FOR{aggtestssubst} = 'aggtests/subs.t';
-
+$Test::Aggregate::Builder::FILE_FOR{aggtestssubst} = 'aggtests/subs.t';
+local $0 = 'aggtests/subs.t';
 
 
 use strict;

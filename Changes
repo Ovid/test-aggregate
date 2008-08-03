@@ -1,5 +1,9 @@
 Revision history for Test-Aggregate
 
+0.32_01
+        - set_filenames => 1 is now the default behavior.
+        - Split the Test::Builder override into its own package.
+
 0.31    22/07/2008
         - Minor bugfix to play well with Test::Most (reset test failure when
           forcing failure after test program eval).

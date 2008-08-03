@@ -4,6 +4,7 @@ use warnings;
 use strict;
 
 use Test::Builder::Module;
+use Test::Aggregate::Builder;
 use Test::More;
 use Carp 'croak';
 
@@ -32,11 +33,11 @@ Test::Aggregate - Aggregate C<*.t> tests to make them run faster.
 
 =head1 VERSION
 
-Version 0.31
+Version 0.32_01
 
 =cut
 
-$VERSION = '0.31';
+$VERSION = '0.32_01';
 
 =head1 SYNOPSIS
 
@@ -100,7 +101,7 @@ test for this with the C<< $ENV{TEST_AGGREGATE} >> variable:
          dump            => 'dump.t',     # optional
          shuffle         => 1,            # optional
          matching        => qr/customer/, # optional
-         set_filenames   => 1,            # optional
+         set_filenames   => 0,            # optional and not recommended
          tidy            => 1,            # optional and experimental
          check_plan      => 1,            # optional and experimental
          test_nowarnings => 0,            # optional and experimental
@@ -173,7 +174,7 @@ each test:
 
   local $0 = $test_filename;
 
-Tests which depend on the value of $0 can often be made to work with this.
+This is the default behavior.
 
 =item * C<tidy>
 
@@ -228,6 +229,7 @@ sub new {
     }
         
     $arg_for->{test_nowarnings} = 1 unless exists $arg_for->{test_nowarnings};
+    $arg_for->{set_filenames}   = 1 unless exists $arg_for->{set_filenames};
     my $dirs = delete $arg_for->{dirs};
     $dirs = [$dirs] if 'ARRAY' ne ref $dirs;
 
@@ -486,7 +488,7 @@ if ( __FILE__ eq '$dump' ) {
 $separator beginning of $test $separator
 package $package;
 sub run_the_tests {
-\$FILE_FOR{$package} = '$test';
+\$Test::Aggregate::Builder::FILE_FOR{$package} = '$test';
 $set_filenames
 $test_code
 $see_if_tests_passed
@@ -556,7 +558,6 @@ sub _test_builder_override {
     my $self = shift;
 
     my $check_plan              = $self->_check_plan;
-
     my $disable_test_nowarnings = '';
     if ( !$self->_test_nowarnings ) {
         $disable_test_nowarnings = <<'        END_CODE';
@@ -567,154 +568,20 @@ BEGIN {
     *Test::NoWarnings::had_no_warnings = sub { };
     *Test::NoWarnings::import = sub {
         my $callpack = caller();
-        if ( $PLAN_FOR{$callpack} ) {
-            $PLAN_FOR{$callpack}--;
+        if ( $Test::Aggregate::Builder::PLAN_FOR{$callpack} ) {
+            $Test::Aggregate::Builder::PLAN_FOR{$callpack}--;
         }
-        $TEST_NOWARNINGS_LOADED{$callpack} = 1;
+        $Test::Aggregate::Builder::TEST_NOWARNINGS_LOADED{$callpack} = 1;
     };
 }
         END_CODE
     }
 
-    my $code = <<'    END_CODE';
-my %PLAN_FOR;
-my %TESTS_RUN;
-my %FILE_FOR;
-my %TEST_NOWARNINGS_LOADED;
+    return <<"    END_CODE";
+use Test::Aggregate::Builder;
+BEGIN { \$Test::Aggregate::Builder::CHECK_PLAN = $check_plan };
+$disable_test_nowarnings;
     END_CODE
-    $code .= <<"    END_CODE";
-$disable_test_nowarnings
-    END_CODE
-    $code .= <<'    END_CODE';
-{
-    BEGIN { $ENV{TEST_AGGREGATE} = 1 };
-
-    END {   # for VMS
-        delete $ENV{TEST_AGGREGATE};
-    }
-    use Test::Builder;
-
-    no warnings 'redefine';
-
-    # Need a tailing plan
-    END {
-
-        # This works because it's a singleton
-        my $builder = Test::Builder->new;
-        my $tests   = $builder->current_test;
-        $builder->_print("1..$tests\n");
-    }
-
-    # The following is done to get around the fact that deferred plans are not
-    # supported.  Unfortunately, there's no clean way to override this, but
-    # this allows us to minimize the monkey patching.
-
-    # XXX We fully-qualify the sub names because PAUSE won't index what it
-    # thinks is an attempt to hijeck the Test::Builder namespace.
-
-    sub Test::Builder::_plan_check {
-        my $self = shift;
-
-        # Will this break under threads?
-        $self->{Expected_Tests} = $self->{Curr_Test} + 1;
-    }
-
-    sub Test::Builder::no_header { 1 }
-
-    # prevent the 'you tried to plan twice' errors
-    my $plan;
-    BEGIN { $plan = \&Test::Builder::plan }
-    sub Test::Builder::plan {
-        delete $_[0]->{Have_Plan};
-        my $callpack = caller(1);
-        if ( 'tests' eq ( $_[1] || '' ) ) {
-            $PLAN_FOR{$callpack} = $_[2];
-            if ( $TEST_NOWARNINGS_LOADED{$callpack} ) {
-
-                # Test::NoWarnings was loaded before plan() was called, so it
-                # didn't have a change to decrement it
-                $PLAN_FOR{$callpack}--;
-            }
-        }
-        $plan->(@_);
-    }
-
-    # Called in _ending and prevents the 'you tried to run a test without a
-    # plan' error.
-    my $_sanity_check;
-    BEGIN { $_sanity_check = \&Test::Builder::_sanity_check }
-    sub Test::Builder::_sanity_check {
-        $_[0]->{Have_Plan} = 1;
-        $_sanity_check->(@_);
-    }
-
-    my $ok;
-    BEGIN { $ok = \&Test::Builder::ok }
-    sub Test::Builder::ok {
-        __check_test_count();
-        $ok->(@_);
-    }
-
-    my $skip;
-    BEGIN { $skip = \&Test::Builder::skip }
-    sub Test::Builder::skip {
-        __check_test_count();
-        $skip->(@_);
-    }
-
-    sub __check_test_count {
-    END_CODE
-    
-    $code .= <<"    END_CODE";
-        return unless '$check_plan';
-    END_CODE
-
-    $code .= <<'    END_CODE';
-        my $callpack;
-        my $stack_level = 1;
-        while ( my ( $package, $filename, $line, $subroutine )
-            = caller($stack_level) )
-        {
-            last if 'Test::Aggregate' eq $package;
-
-            # XXX Because these blocks aren't really subroutines, caller()
-            # doesn't report what you expect.
-            last
-              if $callpack && $subroutine =~ /::(?:BEGIN|END)\z/;
-            $callpack = $package;
-            $stack_level++;
-        }
-        {
-            no warnings 'uninitialized';
-            $TESTS_RUN{$callpack} += 1;
-        }
-    }
-
-    END {
-    END_CODE
-    $code .= <<"    END_CODE";
-        if ( $check_plan ) {
-    END_CODE
-    $code .= <<'    END_CODE';
-            while ( my ( $package, $plan ) = each %PLAN_FOR ) {
-
-                # The following line is needed because it's sometimes the case
-                # in larger systems that plans and tests are specified in
-                # libraries (and not the test files) which multiple test files
-                # use.  As a result, it can be extremely difficult to track
-                # this.  We may change this in the future.
-                next unless my $file = $FILE_FOR{$package};
-                Test::More::is(
-                    $TESTS_RUN{$package} || 0,
-                    $plan || 0,
-                    "Test ($file) should have the correct plan"
-                );
-            }
-        }
-    }
-}
-    END_CODE
-    return $code;
 }
 
 =head1 SETUP/TEARDOWN
@@ -1013,11 +880,9 @@ Tests which use C<$0> can be problematic as the code is run in an C<eval>
 through C<Test::Aggregate> and C<$0> may not match expectations.  This also
 means that it can behave differently if run directly from a dump file.
 
-As it turns out, you can assign to C<$0>!  If C<< set_filenames => 1 >> is
-passed to the constructor, every test will have the following added to its
-package:
-
- local $0 = $test_file_name;
+As it turns out, you can assign to C<$0>!  We do this by default and set the
+C<$0> to the correct filename.  If you don't want this behavior, pass 
+C<< set_filenames => 0 >> to the constructor.
 
 =head2 Minimal test case
 

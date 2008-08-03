@@ -1,0 +1,153 @@
+package Test::Aggregate::Builder;
+
+use strict;
+use warnings;
+
+our $VERSION;
+
+=head1 NAME
+
+Test::Aggregate::Builder - Internal overrides for Test::Builder.
+
+=head1 VERSION
+
+Version 0.32_01
+
+=cut
+
+$VERSION = '0.32_01';
+
+=head1 SYNOPSIS
+
+    use Test::Aggregate::Builder;
+
+=head1 DESCRIPTION
+
+B<WARNING>:  This module is for internal use only.  DO NOT USE DIRECTLY.
+
+=cut 
+
+our %PLAN_FOR;
+our %TESTS_RUN;
+our %FILE_FOR;
+our %TEST_NOWARNINGS_LOADED;
+our $CHECK_PLAN;
+
+BEGIN { $ENV{TEST_AGGREGATE} = 1 }
+
+END {    # for VMS
+    delete $ENV{TEST_AGGREGATE};
+}
+use Test::Builder;
+
+no warnings 'redefine';
+
+# Need a tailing plan
+END {
+
+    # This works because it's a singleton
+    my $builder = Test::Builder->new;
+    my $tests   = $builder->current_test;
+    $builder->_print("1..$tests\n");
+}
+
+# The following is done to get around the fact that deferred plans are not
+# supported.  Unfortunately, there's no clean way to override this, but this
+# allows us to minimize the monkey patching.
+
+# XXX We fully-qualify the sub names because PAUSE won't index what it thinks
+# is an attempt to hijeck the Test::Builder namespace.
+
+sub Test::Builder::_plan_check {
+    my $self = shift;
+
+    # Will this break under threads?
+    $self->{Expected_Tests} = $self->{Curr_Test} + 1;
+}
+
+sub Test::Builder::no_header { 1 }
+
+# prevent the 'you tried to plan twice' errors
+my $plan;
+BEGIN { $plan = \&Test::Builder::plan }
+
+sub Test::Builder::plan {
+    delete $_[0]->{Have_Plan};
+    my $callpack = caller(1);
+    if ( 'tests' eq ( $_[1] || '' ) ) {
+        $PLAN_FOR{$callpack} = $_[2];
+        if ( $TEST_NOWARNINGS_LOADED{$callpack} ) {
+
+            # Test::NoWarnings was loaded before plan() was called, so it
+            # didn't have a change to decrement it
+            $PLAN_FOR{$callpack}--;
+        }
+    }
+    $plan->(@_);
+}
+
+# Called in _ending and prevents the 'you tried to run a test without a
+# plan' error.
+my $_sanity_check;
+BEGIN { $_sanity_check = \&Test::Builder::_sanity_check }
+
+sub Test::Builder::_sanity_check {
+    $_[0]->{Have_Plan} = 1;
+    $_sanity_check->(@_);
+}
+
+my $ok;
+BEGIN { $ok = \&Test::Builder::ok }
+
+sub Test::Builder::ok {
+    __check_test_count();
+    $ok->(@_);
+}
+
+my $skip;
+BEGIN { $skip = \&Test::Builder::skip }
+
+sub Test::Builder::skip {
+    __check_test_count();
+    $skip->(@_);
+}
+
+sub __check_test_count {
+    $DB::single = 1;
+    return unless $CHECK_PLAN;
+    my $callpack;
+    my $stack_level = 1;
+    while ( my ( $package, undef, undef, $subroutine ) = caller($stack_level) ) {
+        last if 'Test::Aggregate' eq $package;
+
+        # XXX Because these blocks aren't really subroutines, caller()
+        # doesn't report what you expect.
+        last
+          if $callpack && $subroutine =~ /::(?:BEGIN|END)\z/;
+        $callpack = $package;
+        $stack_level++;
+    }
+    {
+        no warnings 'uninitialized';
+        $TESTS_RUN{$callpack} += 1;
+    }
+}
+
+END {
+    if ($CHECK_PLAN) {
+        while ( my ( $package, $plan ) = each %PLAN_FOR ) {
+
+            # The following line is needed because it's sometimes the case
+            # in larger systems that plans and tests are specified in
+            # libraries (and not the test files) which multiple test files
+            # use.  As a result, it can be extremely difficult to track
+            # this.  We may change this in the future.
+            next unless my $file = $FILE_FOR{$package};
+            $DB::single = 1;
+            Test::More::is( $TESTS_RUN{$package} || 0,
+                $plan || 0, "Test ($file) should have the correct plan" );
+        }
+    }
+}
+
+1;
