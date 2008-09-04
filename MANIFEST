@@ -1,18 +1,20 @@
-Build.PL
-Changes
-MANIFEST
-META.yml # Will be created by "make dist"
-README
-lib/Test/Aggregate.pm
-t/aggregate.t
-t/lib/Slow/Loading/Module.pm
-t/pre_post.t
-t/pod-coverage.t
-t/pod.t
-t/subs.t
-aggtests/boilerplate.t
 aggtests/00-load.t
+aggtests/boilerplate.t
+aggtests/check_plan.t
 aggtests/slow_load.t
 aggtests/subs.t
-aggtests/check_plan.t
+Build.PL
+Changes
+dump.t
+lib/Test/Aggregate.pm
+lib/Test/Aggregate/Builder.pm
 Makefile.PL
+MANIFEST
+META.yml			# Will be created by "make dist"
+README
+t/aggregate.t
+t/lib/Slow/Loading/Module.pm
+t/pod-coverage.t
+t/pod.t
+t/pre_post.t
+t/subs.t

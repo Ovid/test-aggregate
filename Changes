@@ -1,5 +1,8 @@
 Revision history for Test-Aggregate
 
+0.32_02 03/08/2008
+        - Added Test::Aggregate::Builder to the MANIFEST.
+
 0.32_01 03/08/2008
         - Added line directives to aggregated tests to ensure that
           Test::Builder::ok can now report the correct filename and line
