@@ -1,6 +1,7 @@
 aggtests/00-load.t
 aggtests/boilerplate.t
 aggtests/check_plan.t
+aggtests/findbin.t
 aggtests/slow_load.t
 aggtests/subs.t
 Build.PL
