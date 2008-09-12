@@ -4,7 +4,6 @@ use warnings;
 use strict;
 
 use Test::Builder::Module;
-use Test::Aggregate::Builder;
 use Test::More;
 use Carp 'croak';
 
