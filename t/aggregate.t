@@ -13,6 +13,7 @@ my $tests = Test::Aggregate->new(
         shuffle         => 1,
         dirs            => 'aggtests',
         set_filenames   => 1,
+        findbin         => 1,
         check_plan      => 1,
         test_nowarnings => 0,
     }

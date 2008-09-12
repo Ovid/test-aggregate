@@ -21,6 +21,7 @@ $SIG{__WARN__} = sub {
 my $tests = Test::Aggregate->new(
     {
         dirs     => 'aggtests',
+        findbin  => 1,
         startup  => sub { $startup++ },
         shutdown => sub { $shutdown++ },
         setup    => sub { $setup++ },
