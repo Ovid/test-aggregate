@@ -176,6 +176,13 @@ each test:
 
 This is the default behavior.
 
+=item * C<findbin> (optional)
+
+If supplied with a true value, this will cause FindBin::again() to be called
+before each test file.
+
+This is turned off by default.
+
 =item * C<tidy>
 
 If supplied a true value, attempts to run C<Perl::Tidy> on the source code.
