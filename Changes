@@ -1,5 +1,9 @@
 Revision history for Test-Aggregate
 
+0.34_01 04/09/2008
+        - Add an option to reinitialize FindBin for each aggregated test.
+        - Don't emit a plan when not running any tests.
+
 0.33    03/09/2008
         - Upload 0.32_05 as a non-development release.
 
