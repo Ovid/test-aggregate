@@ -1,0 +1,10 @@
+.*
+!.gitignore
+pm_to_blib
+blib
+Build*
+!Build.PL
+Makefile*
+!Makefile.PL
+*.bak
+_build
