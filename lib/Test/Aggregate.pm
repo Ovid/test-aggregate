@@ -32,11 +32,11 @@ Test::Aggregate - Aggregate C<*.t> tests to make them run faster.
 
 =head1 VERSION
 
-Version 0.34_01
+Version 0.34_02
 
 =cut
 
-$VERSION = '0.34_01';
+$VERSION = '0.34_02';
 
 =head1 SYNOPSIS
 
@@ -445,10 +445,6 @@ if ( __FILE__ eq '$dump' ) {
         if ( $test_code =~ /^(__(?:DATA|END)__)/m ) {
             Test::More::BAIL_OUT("Test $test not allowed to have $1 token");
         }
-        if ( $test_code =~ /skip_all/m ) {
-            warn
-              "Found possible 'skip_all'.  This can cause test suites to abort";
-        }
         my $package   = $self->_get_package($test);
         push @{ $self->{_packages} } => [ $test, $package ];
         if ( $setup ) {
@@ -499,15 +495,17 @@ $reinit_findbin->() if $reinit_findbin;
         $test_packages .= <<"        END_CODE";
 {
 $separator beginning of $test $separator
-package $package;
-sub run_the_tests {
+    package $package;
+    sub run_the_tests {
+        AGGTESTBLOCK: {
 \$Test::Aggregate::Builder::FILE_FOR{$package} = '$test';
 $set_filenames
 $findbin
 # line 1 "$test"
 $test_code
 $see_if_tests_passed
-}
+        } # END AGGTESTBLOCK:
+    }
 $separator end of $test $separator
 }
         END_CODE
@@ -730,12 +728,6 @@ This is needed when you use C<check_plan> and have C<Test::NoWarnings> used.
 This is because we do work internally to subtract the extra test added by
 C<Test::NoWarnings>.  It's painful and experimental.  Good luck.
     
-=item * No 'skip_all' tests, please
-
-Tests which potentially 'skip_all' will cause the aggregate test suite to
-abort prematurely.  Do not attempt to aggregate them.  This may be fixed in a
-future release.
-
 =item * C<Variable "$x" will not stay shared at (eval ...>
 
 Because each test is wrapped in a method call, any of your subs which access a

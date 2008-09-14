@@ -11,11 +11,11 @@ Test::Aggregate::Builder - Internal overrides for Test::Builder.
 
 =head1 VERSION
 
-Version 0.34_01
+Version 0.34_02
 
 =cut
 
-$VERSION = '0.34_01';
+$VERSION = '0.34_02';
 
 =head1 SYNOPSIS
 
@@ -56,7 +56,7 @@ END {
 # allows us to minimize the monkey patching.
 
 # XXX We fully-qualify the sub names because PAUSE won't index what it thinks
-# is an attempt to hijeck the Test::Builder namespace.
+# is an attempt to hijack the Test::Builder namespace.
 
 sub Test::Builder::_plan_check {
     my $self = shift;
@@ -71,19 +71,44 @@ sub Test::Builder::no_header { 1 }
 my $plan;
 BEGIN { $plan = \&Test::Builder::plan }
 
-sub Test::Builder::plan {
-    delete $_[0]->{Have_Plan};
-    my $callpack = caller(1);
-    if ( 'tests' eq ( $_[1] || '' ) ) {
-        $PLAN_FOR{$callpack} = $_[2];
-        if ( $TEST_NOWARNINGS_LOADED{$callpack} ) {
+{
+    my %skip_reason_for;
 
-            # Test::NoWarnings was loaded before plan() was called, so it
-            # didn't have a change to decrement it
-            $PLAN_FOR{$callpack}--;
+    sub Test::Builder::plan {
+        delete $_[0]->{Have_Plan};
+
+        if ( 'skip_all' eq ( $_[1] || '' )) {
+            my $callpack = caller(1);
+            $skip_reason_for{$callpack} = $_[2];
+            return;
         }
+
+        my $callpack = caller(1);
+        if ( 'tests' eq ( $_[1] || '' ) ) {
+            $PLAN_FOR{$callpack} = $_[2];
+            if ( $TEST_NOWARNINGS_LOADED{$callpack} ) {
+
+                # Test::NoWarnings was loaded before plan() was called, so it
+                # didn't have a change to decrement it
+                $PLAN_FOR{$callpack}--;
+            }
+        }
+        $plan->(@_);
     }
-    $plan->(@_);
+
+    my $ok;
+    BEGIN { $ok = \&Test::Builder::ok }
+
+    sub Test::Builder::ok {
+        my $callpack = __check_test_count();
+        if ( my $reason = $skip_reason_for{$callpack} ) {
+            no warnings 'exiting'; 
+            $_[0]->skip($reason);
+            last AGGTESTBLOCK;
+        }
+        local $Test::Builder::Level = $Test::Builder::Level + 1;
+        $ok->(@_);
+    }
 }
 
 # Called in _ending and prevents the 'you tried to run a test without a
@@ -96,15 +121,6 @@ sub Test::Builder::_sanity_check {
     $_sanity_check->(@_);
 }
 
-my $ok;
-BEGIN { $ok = \&Test::Builder::ok }
-
-sub Test::Builder::ok {
-    __check_test_count();
-    local $Test::Builder::Level = $Test::Builder::Level + 1;
-    $ok->(@_);
-}
-
 my $skip;
 BEGIN { $skip = \&Test::Builder::skip }
 
@@ -113,9 +129,9 @@ sub Test::Builder::skip {
     $skip->(@_);
 }
 
+# two purposes:  we check the test cout for a package, but we also return the
+# package name
 sub __check_test_count {
-    $DB::single = 1;
-    return unless $CHECK_PLAN;
     my $callpack;
     my $stack_level = 1;
     while ( my ( $package, undef, undef, $subroutine ) = caller($stack_level) ) {
@@ -132,6 +148,7 @@ sub __check_test_count {
         no warnings 'uninitialized';
         $TESTS_RUN{$callpack} += 1;
     }
+    return $callpack;
 }
 
 END {
@@ -144,7 +161,6 @@ END {
             # use.  As a result, it can be extremely difficult to track
             # this.  We may change this in the future.
             next unless my $file = $FILE_FOR{$package};
-            $DB::single = 1;
             Test::More::is( $TESTS_RUN{$package} || 0,
                 $plan || 0, "Test ($file) should have the correct plan" );
         }

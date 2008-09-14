@@ -1,5 +1,5 @@
 package Slow::Loading::Module;
 
-sleep 5;
+sleep 1;
 
 1;
