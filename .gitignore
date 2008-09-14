@@ -8,3 +8,4 @@ Makefile*
 !Makefile.PL
 *.bak
 _build
+dump.t
