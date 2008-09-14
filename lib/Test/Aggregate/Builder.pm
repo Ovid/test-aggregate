@@ -71,44 +71,37 @@ sub Test::Builder::no_header { 1 }
 my $plan;
 BEGIN { $plan = \&Test::Builder::plan }
 
-{
-    my %skip_reason_for;
+our %SKIP_REASON_FOR;
 
-    sub Test::Builder::plan {
-        delete $_[0]->{Have_Plan};
+sub Test::Builder::plan {
+    delete $_[0]->{Have_Plan};
 
-        if ( 'skip_all' eq ( $_[1] || '' )) {
-            my $callpack = caller(1);
-            $skip_reason_for{$callpack} = $_[2];
-            return;
-        }
-
+    if ( 'skip_all' eq ( $_[1] || '' )) {
         my $callpack = caller(1);
-        if ( 'tests' eq ( $_[1] || '' ) ) {
-            $PLAN_FOR{$callpack} = $_[2];
-            if ( $TEST_NOWARNINGS_LOADED{$callpack} ) {
-
-                # Test::NoWarnings was loaded before plan() was called, so it
-                # didn't have a change to decrement it
-                $PLAN_FOR{$callpack}--;
-            }
-        }
-        $plan->(@_);
+        $SKIP_REASON_FOR{$callpack} = $_[2];
+        return;
     }
 
-    my $ok;
-    BEGIN { $ok = \&Test::Builder::ok }
+    my $callpack = caller(1);
+    if ( 'tests' eq ( $_[1] || '' ) ) {
+        $PLAN_FOR{$callpack} = $_[2];
+        if ( $TEST_NOWARNINGS_LOADED{$callpack} ) {
 
-    sub Test::Builder::ok {
-        my $callpack = __check_test_count();
-        if ( my $reason = $skip_reason_for{$callpack} ) {
-            no warnings 'exiting'; 
-            $_[0]->skip($reason);
-            last AGGTESTBLOCK;
+            # Test::NoWarnings was loaded before plan() was called, so it
+            # didn't have a change to decrement it
+            $PLAN_FOR{$callpack}--;
         }
-        local $Test::Builder::Level = $Test::Builder::Level + 1;
-        $ok->(@_);
     }
+    $plan->(@_);
+}
+
+my $ok;
+BEGIN { $ok = \&Test::Builder::ok }
+
+sub Test::Builder::ok {
+    my $callpack = __check_test_count();
+    local $Test::Builder::Level = $Test::Builder::Level + 1;
+    $ok->(@_);
 }
 
 # Called in _ending and prevents the 'you tried to run a test without a
@@ -133,6 +126,7 @@ sub Test::Builder::skip {
 # package name
 sub __check_test_count {
     my $callpack;
+    return unless $CHECK_PLAN;
     my $stack_level = 1;
     while ( my ( $package, undef, undef, $subroutine ) = caller($stack_level) ) {
         last if 'Test::Aggregate' eq $package;

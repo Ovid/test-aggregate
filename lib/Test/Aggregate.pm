@@ -498,6 +498,11 @@ $separator beginning of $test $separator
     package $package;
     sub run_the_tests {
         AGGTESTBLOCK: {
+        if ( my \$reason = \$Test::Aggregate::Builder::SKIP_REASON_FOR{$package} )
+        {
+            Test::Builder->new->skip(\$reason);
+            last AGGTESTBLOCK;
+        }
 \$Test::Aggregate::Builder::FILE_FOR{$package} = '$test';
 $set_filenames
 $findbin
