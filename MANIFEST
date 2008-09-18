@@ -7,7 +7,6 @@ aggtests/slow_load.t
 aggtests/subs.t
 Build.PL
 Changes
-dump.t
 lib/Test/Aggregate.pm
 lib/Test/Aggregate/Builder.pm
 Makefile.PL

@@ -32,11 +32,11 @@ Test::Aggregate - Aggregate C<*.t> tests to make them run faster.
 
 =head1 VERSION
 
-Version 0.34_03
+Version 0.34_04
 
 =cut
 
-$VERSION = '0.34_03';
+$VERSION = '0.34_04';
 
 =head1 SYNOPSIS
 
@@ -431,14 +431,56 @@ sub _build_aggregate_code {
     my ( $shutdown, $shutdown_code ) = $self->_as_code('shutdown');
     my ( $setup,    $setup_code )    = $self->_as_code('setup');
     my ( $teardown, $teardown_code ) = $self->_as_code('teardown');
+    
     my $verbose = $self->_verbose;
-
+    my $findbin;
+    if ( $self->_findbin ) {
+        $findbin = <<'        END_CODE';
+use FindBin;
+my $REINIT_FINDBIN = FindBin->can(q/again/) || sub {};
+        END_CODE
+    }
+    else {
+        $findbin = 'my $REINIT_FINDBIN = sub {};';
+    }
     $code .= <<"    END_CODE";
 $startup_code
 $shutdown_code
 $setup_code
 $teardown_code
 my \$LAST_TEST_NUM = 0;
+$findbin
+
+sub ::see_if_tests_passed {
+    my ( \$test_name, \$verbose ) = \@_;
+    my \$tests   = \$BUILDER->current_test;
+    my \$failed = 0;
+    my \@summary = \$BUILDER->summary;
+    foreach my \$passed ( \@summary[\$LAST_TEST_NUM .. \$tests - 1] ) {
+        if ( not \$passed ) {
+            \$failed = 1;
+            last;
+        }
+    }
+    my \$ok = \$failed ? "not ok - \$test_name" : "    ok - \$test_name";
+    if ( \$failed or \$verbose == $VERBOSE{all} ) {
+        Test::More::diag(\$ok);
+    }
+    \$LAST_TEST_NUM = \$tests;
+}
+
+sub ::run_this_test_program {
+    my ( \$package, \$test ) = \@_;
+    Test::More::diag("******** running tests for \$test ********") if \$ENV{TEST_VERBOSE};
+    eval { \$package->run_the_tests };
+
+    return unless my \$error = \$@;
+    Test::More::ok( 0, "Error running (\$test):  \$error" );
+    # XXX this should be fine since these keys are not actually used
+    # internally.
+    \$BUILDER->{XXX_test_failed}       = 0;
+    \$BUILDER->{TEST_MOST_test_failed} = 0;
+}
     END_CODE
     
     my @packages;
@@ -451,7 +493,6 @@ my \$LAST_TEST_NUM = 0;
     $code .= <<"    END_CODE";
 if ( __FILE__ eq '$dump' ) {
     package Test::Aggregate; # ;)
-    my \$builder = Test::Builder->new;
     END_CODE
 
     if ( $startup ) {
@@ -480,17 +521,8 @@ if ( __FILE__ eq '$dump' ) {
         if ( $setup ) {
             $code .= "    $setup->('$test');\n";
         }
-        $code .= <<"        END_CODE";
-    Test::More::diag("******** running tests for $test ********") if \$ENV{TEST_VERBOSE};
-    eval { $package->run_the_tests };
-    if ( my \$error = \$@ ) {
-        Test::More::ok( 0, "Error running ($test):  \$error" );
-        # XXX this should be fine since these keys are not actually used
-        # internally.
-        \$builder->{XXX_test_failed}       = 0;
-        \$builder->{TEST_MOST_test_failed} = 0;
-    }
-        END_CODE
+        $code .= qq{    ::run_this_test_program( $package => "$test" );};
+
         if ( $teardown ) {
             $code .= "    $teardown->('$test');\n";
         }
@@ -499,45 +531,24 @@ if ( __FILE__ eq '$dump' ) {
         my $set_filenames = $self->_set_filenames
             ? "local \$0 = '$test';"
             : '';
-        my $findbin = $self->_findbin ? <<'        END_CODE' : '';
-my $reinit_findbin = FindBin->can(q/again/);
-$reinit_findbin->() if $reinit_findbin;
-        END_CODE
 
         my $test_name = "$test ($current_test out of $total_tests)";
-        my $see_if_tests_passed = $verbose ? <<"        END_CODE" : '';
-{
-    my \$builder = Test::Builder->new;   # singleton
-    my \$tests   = \$builder->current_test;
-    my \$failed = 0;
-    my \@summary = \$builder->summary;
-    foreach my \$passed ( \@summary[\$LAST_TEST_NUM .. \$tests - 1] ) {
-        if ( not \$passed ) {
-            \$failed = 1;
-            last;
-        }
-    }
-    my \$ok = \$failed ? "not ok - $test_name" : "    ok - $test_name";
-    if ( \$failed or $verbose == $VERBOSE{all} ) {
-        Test::More::diag(\$ok);
-    }
-    \$LAST_TEST_NUM = \$tests;
-}
-        END_CODE
+        my $see_if_tests_passed = $verbose 
+            ? qq{        ::see_if_tests_passed( "$test_name", $verbose );}
+            : '';
         $test_packages .= <<"        END_CODE";
 {
 $separator beginning of $test $separator
     package $package;
     sub run_the_tests {
         AGGTESTBLOCK: {
-        if ( my \$reason = \$Test::Aggregate::Builder::SKIP_REASON_FOR{$package} )
-        {
+        if ( my \$reason = \$Test::Aggregate::Builder::SKIP_REASON_FOR{$package} ) {
             Test::Builder->new->skip(\$reason);
             last AGGTESTBLOCK;
         }
-\$Test::Aggregate::Builder::FILE_FOR{$package} = '$test';
-$set_filenames
-$findbin
+        \$Test::Aggregate::Builder::FILE_FOR{$package} = '$test';
+        $set_filenames
+        \$REINIT_FINDBIN->();
 # line 1 "$test"
 $test_code
         } # END AGGTESTBLOCK:
@@ -631,6 +642,8 @@ BEGIN {
 use Test::Aggregate::Builder;
 BEGIN { \$Test::Aggregate::Builder::CHECK_PLAN = $check_plan };
 $disable_test_nowarnings;
+
+my \$BUILDER = Test::Builder->new;
     END_CODE
 }
 
