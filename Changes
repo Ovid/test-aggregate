@@ -1,5 +1,9 @@
 Revision history for Test-Aggregate
 
+0.34_03 18/09/2008
+        - Fixed major regression where --dry was eliminated and test counts (X
+          of Y tests) were eliminated.
+
 0.34_02 14/09/2008
         - Allow skip_all tests.
 

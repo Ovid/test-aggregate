@@ -32,11 +32,11 @@ Test::Aggregate - Aggregate C<*.t> tests to make them run faster.
 
 =head1 VERSION
 
-Version 0.34_02
+Version 0.34_03
 
 =cut
 
-$VERSION = '0.34_02';
+$VERSION = '0.34_03';
 
 =head1 SYNOPSIS
 
@@ -182,6 +182,12 @@ before each test file.
 
 This is turned off by default.
 
+=item * C<dry> (optional)
+
+Just print the tests which will be run and the order they will be run in
+(obviously the order will be random if C<shuffle> is true).
+
+
 =item * C<tidy>
 
 If supplied a true value, attempts to run C<Perl::Tidy> on the source code.
@@ -269,6 +275,7 @@ sub new {
     $self->{$_} = delete $arg_for->{$_} foreach (
         qw/
         dump
+        dry
         set_filenames
         findbin
         shuffle
@@ -306,6 +313,7 @@ we cannot load Data::Dump::Streamer:  $error.
 
 sub _check_plan      { shift->{check_plan} || 0 }
 sub _dump            { shift->{dump} || '' }
+sub _dry             { shift->{dry} }
 sub _should_shuffle  { shift->{shuffle} }
 sub _matching        { shift->{matching} }
 sub _set_filenames   { shift->{set_filenames} }
@@ -362,7 +370,17 @@ sub _shuffle {
 sub run {
     my $self  = shift;
 
-    my $code = $self->_build_aggregate_code;
+    my @tests = $self->_get_tests;
+    if ( $self->_dry ) {
+        my $current = 1;
+        my $total   = @tests;
+        foreach my $test (@tests) {
+            print "$test (File $current out of $total)\n";
+            $current++;
+        }
+        return;
+    }
+    my $code = $self->_build_aggregate_code(@tests);
 
     my $dump = $self->_dump;
     if ( $dump ne '' ) {
@@ -371,7 +389,15 @@ sub run {
         print FH $code;
         close FH;
     }
+
+    # XXX Theoretically the 'eval $code' could run the tests directly and
+    # remove a lot of annoying duplication, but unfortunately, we can't
+    # properly capture the startup/shutdown/setup/teardown behavior there
+    # without mandating that Data::Dump::Streamer be installed.  As a result,
+    # this eval'ed code has a check to not actually run the tests if we are
+    # not in the dump file.
     eval $code;
+
     if ( my $error = $@ ) {
         croak("Could not run tests: $@");
     }
@@ -398,7 +424,7 @@ sub run {
 }
 
 sub _build_aggregate_code {
-    my $self = shift;
+    my ( $self, @tests ) = @_;
     my $code = $self->_test_builder_override;
 
     my ( $startup,  $startup_code )  = $self->_as_code('startup');
@@ -431,7 +457,11 @@ if ( __FILE__ eq '$dump' ) {
     if ( $startup ) {
         $code .= "    $startup->() if __FILE__ eq '$dump';\n";
     }
-    foreach my $test ($self->_get_tests) {
+
+    my $current_test = 0;
+    my $total_tests  = @tests;
+    foreach my $test (@tests) {
+        $current_test++;
         my $test_code = $self->_slurp($test);
 
         # get rid of hashbangs as Perl::Tidy gets all huffy-like and we
@@ -473,6 +503,8 @@ if ( __FILE__ eq '$dump' ) {
 my $reinit_findbin = FindBin->can(q/again/);
 $reinit_findbin->() if $reinit_findbin;
         END_CODE
+
+        my $test_name = "$test ($current_test out of $total_tests)";
         my $see_if_tests_passed = $verbose ? <<"        END_CODE" : '';
 {
     my \$builder = Test::Builder->new;   # singleton
@@ -485,7 +517,7 @@ $reinit_findbin->() if $reinit_findbin;
             last;
         }
     }
-    my \$ok = \$failed ? "not ok - $test" : "    ok - $test";
+    my \$ok = \$failed ? "not ok - $test_name" : "    ok - $test_name";
     if ( \$failed or $verbose == $VERBOSE{all} ) {
         Test::More::diag(\$ok);
     }
@@ -508,8 +540,8 @@ $set_filenames
 $findbin
 # line 1 "$test"
 $test_code
-$see_if_tests_passed
         } # END AGGTESTBLOCK:
+$see_if_tests_passed
     }
 $separator end of $test $separator
 }
