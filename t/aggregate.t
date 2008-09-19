@@ -21,4 +21,4 @@ my $tests = Test::Aggregate->new(
 $tests->run;
 
 ok -f $dump, '... and we should have written out a dump file';
-unlink $dump or die "Cannot unlink ($dump): $!";
+unlink $dump or warn "Cannot unlink ($dump): $!";
