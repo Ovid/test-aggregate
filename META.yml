@@ -1,6 +1,6 @@
 ---
 name: Test-Aggregate
-version: 0.34_05
+version: 0.34_06
 author:
   - 'Curtis "Ovid" Poe <ovid@cpan.org>'
 abstract: Aggregate C<*.t> tests to make them run faster.
@@ -19,10 +19,10 @@ recommends:
 provides:
   Test::Aggregate:
     file: lib/Test/Aggregate.pm
-    version: 0.34_05
+    version: 0.34_06
   Test::Aggregate::Builder:
     file: lib/Test/Aggregate/Builder.pm
-    version: 0.34_05
+    version: 0.34_06
 generated_by: Module::Build version 0.2808
 meta-spec:
   url: http://module-build.sourceforge.net/META-spec-v1.2.html

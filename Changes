@@ -1,5 +1,10 @@
 Revision history for Test-Aggregate
 
+0.34_06 21/10/2008
+        - Skip findbin test if FindBin < 1.47.  Seems to cause test failures
+          as FindBin *appears* to be getting confused by the setting of $0,
+          but I'm not sure yet as I don't have an older Perl installed.
+
 0.34_05 19/09/2008
         - Changed 'unlink dump.t or die' to a warn (tests only).
 

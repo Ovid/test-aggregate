@@ -32,11 +32,11 @@ Test::Aggregate - Aggregate C<*.t> tests to make them run faster.
 
 =head1 VERSION
 
-Version 0.34_05
+Version 0.34_06
 
 =cut
 
-$VERSION = '0.34_05';
+$VERSION = '0.34_06';
 
 =head1 SYNOPSIS
 
@@ -181,6 +181,11 @@ If supplied with a true value, this will cause FindBin::again() to be called
 before each test file.
 
 This is turned off by default.
+
+Note that older versions of FindBin (pre 1.47) sometimes get confused about
+where the bin directory is when I set C<$0>.  I don't know why, but this is a
+rarely used option and only happens pre 5.8 perl, so I'm not too worried about
+it.  Just keep it in mind.
 
 =item * C<dry> (optional)
 
