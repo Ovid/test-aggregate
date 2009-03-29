@@ -48,11 +48,11 @@ Test::Aggregate - Aggregate C<*.t> tests to make them run faster.
 
 =head1 VERSION
 
-Version 0.35_01
+Version 0.35_02
 
 =cut
 
-$VERSION = '0.35_01';
+$VERSION = '0.35_02';
 
 =head1 SYNOPSIS
 
@@ -1006,7 +1006,7 @@ out which one is actually causing the failure.
 
 =head1 COMMON PITFALLS
 
-=head2 My Tests Through an Exception But Passed Anyway!
+=head2 My Tests Threw an Exception But Passed Anyway!
 
 This really isn't a C<Test::Aggregate> problem so much as a general Perl
 problem.  For each test file, C<Test::Aggregate> wraps the tests in an eval

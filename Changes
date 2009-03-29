@@ -1,5 +1,9 @@
 Revision history for Test-Aggregate
 
+0.35_02
+        - Fix a doc typo (thanks to Offer Kaye for the report)
+        - Cleaned up some tests.
+
 0.35_01 18/11/2008
         - Make 'exit()' scream loudly if called.
         - Move Test::Aggregate::Builder globals into a hashref in the object.
