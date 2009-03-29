@@ -1,6 +1,6 @@
 #!perl 
 
-use Test::More tests => 2;
+use Test::More tests => 3;
 
 use lib 't/lib';
 
@@ -10,3 +10,7 @@ BEGIN {
 }
 
 diag("Testing Test::Aggregate $Test::Aggregate::VERSION, Perl $], $^X");
+
+ok !exists $ENV{aggregated_current_script},
+  'env variables should not hang around';
+$ENV{aggregated_current_script} = $0;

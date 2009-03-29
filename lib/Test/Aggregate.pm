@@ -9,11 +9,27 @@ use Carp 'croak';
 
 use File::Find;
 
-use vars qw(@ISA @EXPORT $VERSION);
+use vars qw(@ISA @EXPORT @EXPORT_OK $VERSION);
 @ISA    = qw(Test::Builder::Module);
-@EXPORT = @Test::More::EXPORT;
+@EXPORT = (@Test::More::EXPORT, 'run_this_test_program');
 
-BEGIN { $ENV{TEST_AGGREGATE} = 1 };
+BEGIN { 
+    $ENV{TEST_AGGREGATE} = 1;
+    *CORE::GLOBAL::exit = sub {
+        my ($package, $filename, $line) = caller;
+        print STDERR <<"        END_EXIT_WARNING";
+********
+WARNING!
+exit called under Test::Aggregate at:
+File:    $filename
+Package: $package
+Line:    $line
+WARNING!
+********
+        END_EXIT_WARNING
+        exit(@_);
+    };
+};
 
 END {   # for VMS
     delete $ENV{TEST_AGGREGATE};
@@ -32,11 +48,11 @@ Test::Aggregate - Aggregate C<*.t> tests to make them run faster.
 
 =head1 VERSION
 
-Version 0.34_06
+Version 0.35_01
 
 =cut
 
-$VERSION = '0.34_06';
+$VERSION = '0.35_01';
 
 =head1 SYNOPSIS
 
@@ -46,6 +62,8 @@ $VERSION = '0.34_06';
         dirs => $aggregate_test_dir,
     } );
     $tests->run;
+
+    ok $some_data, 'Test::Aggregate also re-exports Test::More functions';
 
 =head1 DESCRIPTION
 
@@ -73,11 +91,25 @@ your regular test directory (C<t/> is the standard):
  });
  $tests->run;
 
+ ok $some_data, 'Test::Aggregate also re-exports Test::More functions';
+
 Take your simplest tests and move them, one by one, into the new test
 directory and keep running the C<Test::Aggregate> program.  You'll find some
 tests will not run in a shared environment like this.  You can either fix the
 tests or simply leave them in your regular test directory.  See how this
 distribution's tests are organized for an example.
+
+Note that C<Test::Aggregate> also exports all exported functions from
+C<Test::More>, allowing you to run other tests after the aggregated tests have
+run.
+
+ use Test::Aggregate;
+ my $other_test_dir = 'aggregate_tests';
+ my $tests = Test::Aggregate->new( {
+    dirs => $other_test_dir
+ });
+ $tests->run;
+ ok !(-f 't/data/tmp.txt'), '... and our temp file should be deleted';
 
 Some tests cannot run in an aggregate environment.  These may include
 test for this with the C<< $ENV{TEST_AGGREGATE} >> variable:
@@ -112,10 +144,19 @@ following keys:
 
 =over 4
 
-=item * C<dirs> (mandatory)
+=item * C<dirs> (either this or C<tests> is mandatory)
 
 The directories to look in for the aggregated tests.  This may be a scalar
 value of a single directory or an array refernce of multiple directories.
+
+=item * C<tests> (either this or C<dirs> is mandatory)
+
+Instead of providing directories for the aggregated tests, you may supply an
+array reference with a list of tests to aggregate.  If both are supplied,
+these tests will be appended to the list of tests found in C<dirs>.
+
+The C<matching> parameter does not apply to test files identified with this
+key.
 
 =item * C<verbose> (optional, but strongly recommended)
 
@@ -241,15 +282,25 @@ sub _code_attributes {
 sub new {
     my ( $class, $arg_for ) = @_;
 
-    unless ( exists $arg_for->{dirs} ) {
-        Test::More::BAIL_OUT("You must supply 'dirs'");
+    unless ( exists $arg_for->{dirs} || exists $arg_for->{tests} ) {
+        Test::More::BAIL_OUT("You must supply 'dirs' or 'tests'");
+    }
+    if ( exists $arg_for->{tests} && 'ARRAY' ne ref $arg_for->{tests} ) {
+        Test::More::BAIL_OUT(
+            "Argument for Test::Aggregate 'tests' key must be an array reference"
+        );
     }
         
     $arg_for->{test_nowarnings} = 1 unless exists $arg_for->{test_nowarnings};
     $arg_for->{set_filenames}   = 1 unless exists $arg_for->{set_filenames};
     $arg_for->{findbin}         = 1 unless exists $arg_for->{findbin};
     my $dirs = delete $arg_for->{dirs};
-    $dirs = [$dirs] if 'ARRAY' ne ref $dirs;
+    if ( defined $dirs ) {
+        $dirs = [$dirs] if 'ARRAY' ne ref $dirs;
+    }
+    else {
+        $dirs = [];
+    }
 
     my $matching = qr//;
     if ( $arg_for->{matching} ) {
@@ -279,18 +330,20 @@ sub new {
     } => $class;
     $self->{$_} = delete $arg_for->{$_} foreach (
         qw/
-        dump
-        dry
-        set_filenames
-        findbin
-        shuffle
-        verbose
-        tidy
         check_plan
+        dry
+        dump
+        findbin
+        set_filenames
+        shuffle
         test_nowarnings
+        tests
+        tidy
+        verbose
         /,
         $class->_code_attributes
     );
+    $self->{tests} ||= [];
 
     if ( my @keys = keys %$arg_for ) {
         local $" = ', ';
@@ -328,6 +381,7 @@ sub _startup         { shift->{startup} }
 sub _shutdown        { shift->{shutdown} }
 sub _setup           { shift->{setup} }
 sub _teardown        { shift->{teardown} }
+sub _tests           { @{ shift->{tests} } }
 sub _tidy            { shift->{tidy} }
 sub _test_nowarnings { shift->{test_nowarnings} }
 
@@ -344,12 +398,15 @@ sub _get_tests {
     my $self = shift;
     my @tests;
     my $matching = $self->_matching;
-    find( {
-            no_chdir => 1,
-            wanted   => sub {
-                push @tests => $File::Find::name if /\.t\z/ && /$matching/;
-            }
-    }, $self->_dirs );
+    if ( $self->_dirs ) {
+        find( {
+                no_chdir => 1,
+                wanted   => sub {
+                    push @tests => $File::Find::name if /\.t\z/ && /$matching/;
+                }
+        }, $self->_dirs );
+    }
+    push @tests => $self->_tests;
     
     if ( $self->_should_shuffle ) {
         $self->_shuffle(@tests);
@@ -409,12 +466,18 @@ sub run {
 
     $self->_startup->() if $self->_startup;
     my $builder = Test::Builder->new;
-    foreach my $data ($self->_packages) {
+
+    # some tests may have been run in BEGIN blocks
+    $builder->{'Test::Aggregate::Builder'}{last_test} = @{ $builder->{Test_Results} } || 0;
+
+    my $current_test = 0;
+    my @packages     = $self->_packages;
+    my $total_tests  = @packages;
+    foreach my $data (@packages) {
+        $current_test++;
         my ( $test, $package ) = @$data;
-        Test::More::diag("******** running tests for $test ********")
-          if $ENV{TEST_VERBOSE};
         $self->_setup->() if $self->_setup;
-        eval { $package->run_the_tests };
+        run_this_test_program( $package => $test, $current_test, $total_tests, 2 );
         if ( my $error = $@ ) {
             Test::More::ok( 0, "Error running ($test):  $error" );
         }
@@ -426,6 +489,72 @@ sub run {
         $self->_teardown->() if $self->_teardown;
     }
     $self->_shutdown->() if $self->_shutdown;
+}
+
+sub _any_tests_failed {
+    my $failed  = 0; 
+    my $builder = Test::Builder->new;
+    my @summary = $builder->summary;
+    foreach my $passed (
+        @summary[ $builder->{'Test::Aggregate::Builder'}{last_test} 
+            ..
+        $builder->current_test - 1 ]
+    ) {
+        if (not $passed) {
+            $failed = 1;
+            last;
+        }
+    }
+    return $failed;
+}
+
+sub run_this_test_program {
+    my $builder = Test::Builder->new;
+    my ( $package, $test, $current_test, $num_tests, $verbose ) = @_;
+    Test::More::diag("******** running tests for $test ********") if $ENV{TEST_VERBOSE};
+    my $error = eval { 
+        my $builder = Test::Builder->new;
+        if ( my $reason = $builder->{'Test::Aggregate::Builder'}{skip_reason_for}{$package} ) {
+            $builder->skip($reason);
+            return;
+        }
+        else {
+            local $@;
+            # localize some popular globals
+            no warnings 'uninitialized';
+            local %ENV = %ENV;
+            local $/   = $/;
+            local @INC = @INC;
+            local $_   = $_;
+            local $|   = $|;
+            local %SIG = %SIG;
+            use warnings 'uninitialized';
+            $builder->{'Test::Aggregate::Builder'}{file_for}{$package} = $test;
+            eval { $package->run_the_tests };
+            $@;
+        }
+    };
+
+    if ($verbose) {
+        my $test_name = "$test ($current_test out of $num_tests)";
+        my $failed    = _any_tests_failed();
+        chomp $error if defined $error;
+        $error &&= "($error)";
+        my $ok = $failed || $error
+                ? "not ok - $test_name $error"
+                : "    ok - $test_name";
+        Test::More::diag($ok) if $error or $failed or $verbose == $VERBOSE{all};
+        if ($error or $failed) {
+            Test::More::ok(0, "Error running ($test):  $error");
+            # XXX this should be fine since these keys are not actually used
+            # internally.
+            $builder->{XXX_test_failed}       = 0;
+            $builder->{TEST_MOST_test_failed} = 0;
+        }
+    }
+    $builder->{'Test::Aggregate::Builder'}{last_test} = $builder->current_test;
+
+    return unless $error;
 }
 
 sub _build_aggregate_code {
@@ -453,39 +582,7 @@ $startup_code
 $shutdown_code
 $setup_code
 $teardown_code
-my \$LAST_TEST_NUM = 0;
 $findbin
-
-sub ::see_if_tests_passed {
-    my ( \$test_name, \$verbose ) = \@_;
-    my \$tests   = \$BUILDER->current_test;
-    my \$failed = 0;
-    my \@summary = \$BUILDER->summary;
-    foreach my \$passed ( \@summary[\$LAST_TEST_NUM .. \$tests - 1] ) {
-        if ( not \$passed ) {
-            \$failed = 1;
-            last;
-        }
-    }
-    my \$ok = \$failed ? "not ok - \$test_name" : "    ok - \$test_name";
-    if ( \$failed or \$verbose == $VERBOSE{all} ) {
-        Test::More::diag(\$ok);
-    }
-    \$LAST_TEST_NUM = \$tests;
-}
-
-sub ::run_this_test_program {
-    my ( \$package, \$test ) = \@_;
-    Test::More::diag("******** running tests for \$test ********") if \$ENV{TEST_VERBOSE};
-    eval { \$package->run_the_tests };
-
-    return unless my \$error = \$@;
-    Test::More::ok( 0, "Error running (\$test):  \$error" );
-    # XXX this should be fine since these keys are not actually used
-    # internally.
-    \$BUILDER->{XXX_test_failed}       = 0;
-    \$BUILDER->{TEST_MOST_test_failed} = 0;
-}
     END_CODE
     
     my @packages;
@@ -495,10 +592,7 @@ sub ::run_this_test_program {
 
     my $dump = $self->_dump;
 
-    $code .= <<"    END_CODE";
-if ( __FILE__ eq '$dump' ) {
-    package Test::Aggregate; # ;)
-    END_CODE
+    $code .= "if ( __FILE__ eq '$dump' ) {\n";
 
     if ( $startup ) {
         $code .= "    $startup->() if __FILE__ eq '$dump';\n";
@@ -526,7 +620,7 @@ if ( __FILE__ eq '$dump' ) {
         if ( $setup ) {
             $code .= "    $setup->('$test');\n";
         }
-        $code .= qq{    ::run_this_test_program( $package => "$test" );};
+        $code .= qq{    run_this_test_program( $package => "$test", $current_test, $total_tests, $verbose );};
 
         if ( $teardown ) {
             $code .= "    $teardown->('$test');\n";
@@ -536,28 +630,15 @@ if ( __FILE__ eq '$dump' ) {
         my $set_filenames = $self->_set_filenames
             ? "local \$0 = '$test';"
             : '';
-
-        my $test_name = "$test ($current_test out of $total_tests)";
-        my $see_if_tests_passed = $verbose 
-            ? qq{        ::see_if_tests_passed( "$test_name", $verbose );}
-            : '';
         $test_packages .= <<"        END_CODE";
 {
 $separator beginning of $test $separator
     package $package;
     sub run_the_tests {
-        AGGTESTBLOCK: {
-        if ( my \$reason = \$Test::Aggregate::Builder::SKIP_REASON_FOR{$package} ) {
-            Test::Builder->new->skip(\$reason);
-            last AGGTESTBLOCK;
-        }
-        \$Test::Aggregate::Builder::FILE_FOR{$package} = '$test';
         $set_filenames
         \$REINIT_FINDBIN->();
 # line 1 "$test"
 $test_code
-        } # END AGGTESTBLOCK:
-$see_if_tests_passed
     }
 $separator end of $test $separator
 }
@@ -634,21 +715,25 @@ BEGIN {
     *Test::NoWarnings::had_no_warnings = sub { };
     *Test::NoWarnings::import = sub {
         my $callpack = caller();
-        if ( $Test::Aggregate::Builder::PLAN_FOR{$callpack} ) {
-            $Test::Aggregate::Builder::PLAN_FOR{$callpack}--;
+        my $ta_builder = $BUILDER->{'Test::Aggregate::Builder'};
+        if ( $ta_builder->{plan_for}{$callpack} ) {
+            $ta_builder->{plan_for}{$callpack}--;
         }
-        $Test::Aggregate::Builder::TEST_NOWARNINGS_LOADED{$callpack} = 1;
+        $ta_builder->{test_nowarnings_loaded}{$callpack} = 1;
     };
 }
         END_CODE
     }
 
     return <<"    END_CODE";
+use Test::Aggregate;
 use Test::Aggregate::Builder;
-BEGIN { \$Test::Aggregate::Builder::CHECK_PLAN = $check_plan };
+my \$BUILDER;
+BEGIN { 
+    \$BUILDER = Test::Builder->new;
+    \$BUILDER->{'Test::Aggregate::Builder'}{check_plan} = $check_plan 
+};
 $disable_test_nowarnings;
-
-my \$BUILDER = Test::Builder->new;
     END_CODE
 }
 
@@ -730,12 +815,47 @@ The teardown function gets run after every test program.
 
 =back
 
+=head1 GLOBAL VARIABLES
+
+You shouldn't be using global variables and a dependence on them can break
+your code.  However, Perl provides quite a few handy global variables which,
+unfortunately, can easily break your tests if you change them in one test and
+another assumes an unchanged value.  As a result, we localize many of Perl's
+most common global variables for you, using the following syntax:
+
+    local %ENV = %ENV; 
+    
+The following global variables are localized for you.  Any others must be
+localized manually per test.
+
+=over 4
+
+=item * C<@INC>
+
+=item * C<%ENV>
+
+=item * C<%SIG>
+
+=item * C<$/>
+
+=item * C<$_>
+
+=item * C<$|>
+
+=back
+
 =head1 CAVEATS
 
 Not all tests can be included with this technique.  If you have C<Test::Class>
 tests, there is no need to run them with this.  Otherwise:
 
 =over 4
+
+=item * C<exit>
+
+Don't call exit() in your aggregated tests.  We now warn very verbosely if
+this is done, but we still exit on the assumption that further tests cannot
+run.
 
 =item * C<__END__> and C<__DATA__> tokens.
 

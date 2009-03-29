@@ -11,11 +11,11 @@ Test::Aggregate::Builder - Internal overrides for Test::Builder.
 
 =head1 VERSION
 
-Version 0.34_06
+Version 0.35_01
 
 =cut
 
-$VERSION = '0.34_06';
+$VERSION = '0.35_01';
 
 =head1 SYNOPSIS
 
@@ -26,12 +26,6 @@ $VERSION = '0.34_06';
 B<WARNING>:  This module is for internal use only.  DO NOT USE DIRECTLY.
 
 =cut 
-
-our %PLAN_FOR;
-our %TESTS_RUN;
-our %FILE_FOR;
-our %TEST_NOWARNINGS_LOADED;
-our $CHECK_PLAN;
 
 BEGIN { $ENV{TEST_AGGREGATE} = 1 }
 
@@ -67,66 +61,96 @@ sub Test::Builder::_plan_check {
 
 sub Test::Builder::no_header { 1 }
 
-# prevent the 'you tried to plan twice' errors
-my $plan;
-BEGIN { $plan = \&Test::Builder::plan }
+{
 
-our %SKIP_REASON_FOR;
+    # prevent the 'you tried to plan twice' errors
+    my $plan;
+    BEGIN { $plan = \&Test::Builder::plan }
 
-sub Test::Builder::plan {
-    delete $_[0]->{Have_Plan};
+    sub Test::Builder::plan {
+        delete $_[0]->{Have_Plan};
+        my $tab_builder = $_[0]->{'Test::Aggregate::Builder'};
 
-    if ( 'skip_all' eq ( $_[1] || '' )) {
-        my $callpack = caller(1);
-        $SKIP_REASON_FOR{$callpack} = $_[2];
-        return;
-    }
-
-    my $callpack = caller(1);
-    if ( 'tests' eq ( $_[1] || '' ) ) {
-        $PLAN_FOR{$callpack} = $_[2];
-        if ( $TEST_NOWARNINGS_LOADED{$callpack} ) {
-
-            # Test::NoWarnings was loaded before plan() was called, so it
-            # didn't have a change to decrement it
-            $PLAN_FOR{$callpack}--;
+        if ( 'skip_all' eq ( $_[1] || '' ) ) {
+            my $callpack = caller(1);
+            $tab_builder->{skip_reason_for}{$callpack} = $_[2];
+            return;
         }
+
+        my $callpack = caller(1);
+        if ( 'tests' eq ( $_[1] || '' ) ) {
+            $tab_builder->{plan_for}{$callpack} = $_[2];
+            if ( $tab_builder->{test_nowarnings_loaded}{$callpack} )
+            {
+
+                # Test::NoWarnings was loaded before plan() was called, so it
+                # didn't have a change to decrement it
+                $tab_builder->{plan_for}{$callpack}--;
+            }
+        }
+        $plan->(@_);
     }
-    $plan->(@_);
 }
 
-my $ok;
-BEGIN { $ok = \&Test::Builder::ok }
+{
+    my $ok;
+    BEGIN { $ok = \&Test::Builder::ok }
 
-sub Test::Builder::ok {
-    my $callpack = __check_test_count();
-    local $Test::Builder::Level = $Test::Builder::Level + 1;
-    $ok->(@_);
+    sub Test::Builder::ok {
+        my $callpack = __check_test_count(@_);
+        local $Test::Builder::Level = $Test::Builder::Level + 1;
+        $ok->(@_);
+    }
 }
 
-# Called in _ending and prevents the 'you tried to run a test without a
-# plan' error.
-my $_sanity_check;
-BEGIN { $_sanity_check = \&Test::Builder::_sanity_check }
+{
+    my $reset;
+    BEGIN { $reset = \&Test::Builder::reset }
 
-sub Test::Builder::_sanity_check {
-    $_[0]->{Have_Plan} = 1;
-    $_sanity_check->(@_);
+    sub Test::Builder::reset {
+        my $self = shift;
+        $reset->($self);
+        $self->{'Test::Aggregate::Builder'} = {
+            plan_for               => {},
+            tests_run              => {},
+            file_for               => {},
+            test_nowarnings_loaded => {},
+            skip_reason_for        => {},
+            check_plan             => undef,
+            last_test              => undef,
+        };
+    }
 }
 
-my $skip;
-BEGIN { $skip = \&Test::Builder::skip }
+{
 
-sub Test::Builder::skip {
-    __check_test_count();
-    $skip->(@_);
+    # Called in _ending and prevents the 'you tried to run a test without a
+    # plan' error.
+    my $_sanity_check;
+    BEGIN { $_sanity_check = \&Test::Builder::_sanity_check }
+
+    sub Test::Builder::_sanity_check {
+        $_[0]->{Have_Plan} = 1;
+        $_sanity_check->(@_);
+    }
+}
+
+{
+    my $skip;
+    BEGIN { $skip = \&Test::Builder::skip }
+
+    sub Test::Builder::skip {
+        __check_test_count(@_);
+        $skip->(@_);
+    }
 }
 
 # two purposes:  we check the test cout for a package, but we also return the
 # package name
 sub __check_test_count {
+    my $self = shift;
     my $callpack;
-    return unless $CHECK_PLAN;
+    return unless $self->{'Test::Aggregate::Builder'}{check_plan};
     my $stack_level = 1;
     while ( my ( $package, undef, undef, $subroutine ) = caller($stack_level) ) {
         last if 'Test::Aggregate' eq $package;
@@ -140,22 +164,23 @@ sub __check_test_count {
     }
     {
         no warnings 'uninitialized';
-        $TESTS_RUN{$callpack} += 1;
+        $self->{'Test::Aggregate::Builder'}{tests_run}{$callpack} += 1;
     }
     return $callpack;
 }
 
 END {
-    if ($CHECK_PLAN) {
-        while ( my ( $package, $plan ) = each %PLAN_FOR ) {
+    my $ta = Test::Builder->new->{'Test::Aggregate::Builder'};
+    if ( $ta->{check_plan} ) {
+        while ( my ( $package, $plan ) = each %{ $ta->{plan_for} } ) {
 
             # The following line is needed because it's sometimes the case
             # in larger systems that plans and tests are specified in
             # libraries (and not the test files) which multiple test files
             # use.  As a result, it can be extremely difficult to track
             # this.  We may change this in the future.
-            next unless my $file = $FILE_FOR{$package};
-            Test::More::is( $TESTS_RUN{$package} || 0,
+            next unless my $file = $ta->{file_for}{$package};
+            Test::More::is( $ta->{tests_run}{$package} || 0,
                 $plan || 0, "Test ($file) should have the correct plan" );
         }
     }
