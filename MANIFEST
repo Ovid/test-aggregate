@@ -1,4 +1,3 @@
-aggtests/00-load.t
 aggtests/check_plan.t
 aggtests/findbin.t
 aggtests/skip_all.t
@@ -12,6 +11,7 @@ Makefile.PL
 MANIFEST
 META.yml			# Will be created by "make dist"
 README
+t/00-load.t
 t/aggregate.t
 t/lib/Slow/Loading/Module.pm
 xt/author/pod-coverage.t

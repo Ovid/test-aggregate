@@ -1,17 +1,18 @@
 ---
 name: Test-Aggregate
-version: 0.35_01
+version: 0.35_02
 author:
   - 'Curtis "Ovid" Poe <ovid@cpan.org>'
 abstract: Aggregate C<*.t> tests to make them run faster.
 license: perl
 resources:
-  license: http://dev.perl.org/licenses/
+  license: ~
 requires:
   FindBin: 0
   Test::Harness: 3.09
   Test::NoWarnings: 0
 build_requires:
+  Test::Most: 0.21
   Test::Simple: 0.74
 recommends:
   Data::Dump::Streamer: 1.11
@@ -19,11 +20,11 @@ recommends:
 provides:
   Test::Aggregate:
     file: lib/Test/Aggregate.pm
-    version: 0.35_01
+    version: 0.35_02
   Test::Aggregate::Builder:
     file: lib/Test/Aggregate/Builder.pm
-    version: 0.35_01
-generated_by: Module::Build version 0.2808
+    version: 0.35_02
+generated_by: Module::Build version 0.32
 meta-spec:
   url: http://module-build.sourceforge.net/META-spec-v1.2.html
   version: 1.2

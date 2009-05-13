@@ -34,15 +34,61 @@ END {    # for VMS
 }
 use Test::Builder;
 
+{
+    my $DONE_TESTING;
+    BEGIN {
+        no warnings 'redefine';
+        if ( Test::Builder->can('done_testing') ) {
+            $DONE_TESTING = \&Test::Builder::done_testing;
+            *Test::Builder::done_testing = sub {
+                my ( $self, $num_tests ) = @_;
+
+                $self->expected_tests( defined $num_tests
+                    ? $num_tests
+                    : $self->current_test
+                );
+                return;
+            };
+            my $output_plan = \&Test::Builder::_output_plan;
+            *Test::Builder::_output_plan = sub {
+                return unless $_[0]->{Done_Testing};
+                goto $output_plan;
+            };
+        }
+        else {
+            *Test::Builder::_plan_check = sub {
+                my $self = shift;
+
+                # Will this break under threads?
+                $self->{Expected_Tests} = $self->{Curr_Test} + 1;
+            };
+        }
+    }
+    END {
+        my $tb = Test::Builder->new;
+        $tb->{'Test::Aggregate::Builder'}{ignore_timing_blocks} = 1;
+        my $tests = $tb->current_test;
+        $DB::single = 1;
+        $tb->expected_tests($tests);
+        if ( $DONE_TESTING ) {
+            $tb->$DONE_TESTING($tests);
+        }
+        else {
+            $tb->_print("1..$tests\n");
+        }
+    }
+}
+
 no warnings 'redefine';
 
 # Need a tailing plan
 END {
 
-    # This works because it's a singleton
-    my $builder = Test::Builder->new;
-    my $tests   = $builder->current_test;
-    $builder->_print("1..$tests\n");
+    unless ( Test::Builder->can('done_testing') ) {
+        # This works because it's a singleton
+        my $builder = Test::Builder->new;
+        my $tests   = $builder->current_test;
+    }
 }
 
 # The following is done to get around the fact that deferred plans are not
@@ -51,13 +97,6 @@ END {
 
 # XXX We fully-qualify the sub names because PAUSE won't index what it thinks
 # is an attempt to hijack the Test::Builder namespace.
-
-sub Test::Builder::_plan_check {
-    my $self = shift;
-
-    # Will this break under threads?
-    $self->{Expected_Tests} = $self->{Curr_Test} + 1;
-}
 
 sub Test::Builder::no_header { 1 }
 
@@ -96,8 +135,33 @@ sub Test::Builder::no_header { 1 }
     my $ok;
     BEGIN { $ok = \&Test::Builder::ok }
 
+    my %FORBIDDEN = map { $_ => 1 } qw/BEGIN CHECK INIT END/;
+
     sub Test::Builder::ok {
-        my $callpack = __check_test_count(@_);
+        __check_test_count(@_);
+        my $level  = 1;
+        while (1) {
+            my ($caller) = ( ( ( caller($level) )[3] || '' ) =~ /::([[:word:]]+)\z/ );
+            last unless $caller;
+            if ( $FORBIDDEN{$caller}
+                && not $_[0]
+                ->{'Test::Aggregate::Builder'}{ignore_timing_blocks} )
+            {
+                my ( $self, $test, $name ) = @_;
+                $test = $test ? "Yes" : "No";
+                my ( $filename, $line ) = ( caller($level) )[ 1, 2 ];
+                $self->diag(<<"                END");
+>>>>             DEPRECATION WARNING             <<<<
+>>>> See http://use.perl.org/~Ovid/journal/38974 <<<<
+Aggregated tests should not be run in BEGIN, CHECK, INIT or END blocks.
+File:  $filename
+Line:  $line
+Name:  $name
+Pass:  $test
+                END
+            }
+            $level++;
+        }
         local $Test::Builder::Level = $Test::Builder::Level + 1;
         $ok->(@_);
     }
@@ -167,23 +231,6 @@ sub __check_test_count {
         $self->{'Test::Aggregate::Builder'}{tests_run}{$callpack} += 1;
     }
     return $callpack;
-}
-
-END {
-    my $ta = Test::Builder->new->{'Test::Aggregate::Builder'};
-    if ( $ta->{check_plan} ) {
-        while ( my ( $package, $plan ) = each %{ $ta->{plan_for} } ) {
-
-            # The following line is needed because it's sometimes the case
-            # in larger systems that plans and tests are specified in
-            # libraries (and not the test files) which multiple test files
-            # use.  As a result, it can be extremely difficult to track
-            # this.  We may change this in the future.
-            next unless my $file = $ta->{file_for}{$package};
-            Test::More::is( $ta->{tests_run}{$package} || 0,
-                $plan || 0, "Test ($file) should have the correct plan" );
-        }
-    }
 }
 
 =head1 AUTHOR

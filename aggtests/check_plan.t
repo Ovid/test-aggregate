@@ -6,8 +6,7 @@ use warnings;
 use lib 'lib', 't/lib';
 use Test::More tests => 5;
 
-BEGIN { ok 1, "$0 ***** 1" }
-END   { ok 1, "$0 ***** 4" }
+ok 1, "$0 ***** 1";
 ok 1, "$0 ***** 2";
 
 SKIP: {
@@ -17,4 +16,5 @@ SKIP: {
 
 ok !exists $ENV{aggregated_current_script},
   'env variables should not hang around';
+ok 1, "$0 ***** 4";
 $ENV{aggregated_current_script} = $0;

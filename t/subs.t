@@ -1,5 +1,6 @@
 #!/usr/bin/perl
 
+#use lib '../Test-Simple-0.86/lib';
 use strict;
 use warnings;
 
@@ -10,6 +11,7 @@ my $tests = Test::Aggregate->new(
     {
         dirs     => 'aggtests',
         matching => qr/subs/,
+        dump     => 'done_testing.t',
     }
 );
 $tests->run;

@@ -323,10 +323,11 @@ sub new {
     }
 
     my $self = bless {
-        dirs            => $dirs,
-        matching        => $matching,
-        _no_streamer    => 0,
-        _packages       => [],
+        dirs              => $dirs,
+        matching          => $matching,
+        _no_streamer      => 0,
+        _packages         => [],
+        aggregate_program => $0,
     } => $class;
     $self->{$_} = delete $arg_for->{$_} foreach (
         qw/
@@ -468,7 +469,9 @@ sub run {
     my $builder = Test::Builder->new;
 
     # some tests may have been run in BEGIN blocks
-    $builder->{'Test::Aggregate::Builder'}{last_test} = @{ $builder->{Test_Results} } || 0;
+    my $tab = 'Test::Aggregate::Builder';
+    $builder->{$tab}{last_test} = @{ $builder->{Test_Results} } || 0;
+    $builder->{$tab}{aggregate_program} = $self->{aggregate_program};
 
     my $current_test = 0;
     my @packages     = $self->_packages;
@@ -559,7 +562,8 @@ sub run_this_test_program {
 
 sub _build_aggregate_code {
     my ( $self, @tests ) = @_;
-    my $code = $self->_test_builder_override;
+    my $code = "\n# Built from $0\n";
+    $code .= $self->_test_builder_override;
 
     my ( $startup,  $startup_code )  = $self->_as_code('startup');
     my ( $shutdown, $shutdown_code ) = $self->_as_code('shutdown');
@@ -615,6 +619,7 @@ $findbin
         if ( $test_code =~ /^(__(?:DATA|END)__)/m ) {
             Test::More::BAIL_OUT("Test $test not allowed to have $1 token");
         }
+
         my $package   = $self->_get_package($test);
         push @{ $self->{_packages} } => [ $test, $package ];
         if ( $setup ) {
@@ -630,6 +635,17 @@ $findbin
         my $set_filenames = $self->_set_filenames
             ? "local \$0 = '$test';"
             : '';
+
+        if ( $self->_check_plan ) {
+            $test_code .= <<"            END";
+my \$tab   = Test::Builder->new->{'Test::Aggregate::Builder'};
+my \$plan  = \$tab->{plan_for}{'$package'} || 0;
+my \$file  = \$tab->{file_for}{'$package'};
+my \$tests = \$tab->{tests_run}{'$package'} || 0;
+Test::More::is( \$tests, \$plan, "Test (\$file) should have the correct plan" );
+            END
+        }
+
         $test_packages .= <<"        END_CODE";
 {
 $separator beginning of $test $separator
@@ -647,8 +663,9 @@ $separator end of $test $separator
     if ( $shutdown ) {
         $code .= "    $shutdown->() if __FILE__ eq '$dump';\n";
     }
-
-    $code .= "}\n$test_packages";
+    
+    $code .= "}\n";
+    $code .= $test_packages;
     if ( my $tidy = $self->_tidy ) {
         eval "use Perl::Tidy";
         my $error = $@;
