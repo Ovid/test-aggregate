@@ -78,6 +78,21 @@ named C<run_the_tests>.  This allows us to load perl only once and related
 modules only once.  If you have modules which are expensive to load, this can
 dramatically speed up a test suite.
 
+=head1 DEPRECATION
+
+For a whole variety of reasons, tests run in BEGIN/CHECK/INIT/INIT blocks are
+now deprecated.  They cause all sorts of test sequence headaches.  Plus, they
+break the up-coming nested TAP work.  You will have a problem if you use this
+common idiom:
+
+ BEGIN {
+     use_ok 'My::Module' or die;
+ }
+
+Instead, just C<use> the module and put the C<use_ok> tests in a t/load.t file
+or something similar and B<don't> aggregate it.  See the following for more
+information: L<http://use.perl.org/~Ovid/journal/38974>.
+
 =head1 USAGE
 
 Create a separate directory for your tests.  This should not be a subdirectory
