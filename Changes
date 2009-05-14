@@ -1,5 +1,11 @@
 Revision history for Test-Aggregate
 
+0.35_04
+        - Unlink dump files in tests.
+
+0.35_03 15/05/2009
+        - Don't run done_testing() in tests if it doesn't exist.
+
 0.35_02 14/05/2009
         - Deprecate tests run in BEGIN/END/CHECK/INIT.
           See http://use.perl.org/~Ovid/journal/38974 for more information.

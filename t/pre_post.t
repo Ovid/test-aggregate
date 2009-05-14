@@ -36,5 +36,5 @@ is $startup,  1, 'Startup should be called once';
 is $shutdown, 1, '... as should shutdown';
 is $setup,    6, 'Setup should be called once for each test program';
 is $teardown, 6, '... as should teardown';
-#unlink $dump or warn "Cannot unlink ($dump): $!";
-done_testing;
+unlink $dump or warn "Cannot unlink ($dump): $!";
+done_testing() if __PACKAGE__->can('done_testing');

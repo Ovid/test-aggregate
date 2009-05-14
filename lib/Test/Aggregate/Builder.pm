@@ -11,11 +11,11 @@ Test::Aggregate::Builder - Internal overrides for Test::Builder.
 
 =head1 VERSION
 
-Version 0.35_02
+Version 0.35_03
 
 =cut
 
-$VERSION = '0.35_02';
+$VERSION = '0.35_03';
 
 =head1 SYNOPSIS
 
