@@ -1,6 +1,11 @@
 Revision history for Test-Aggregate
 
-0.35_04
+0.35_05 20/05/2009
+        - Removed bogus test file throwing my counts off.  No wonder all tests
+          were failing for people!
+        - Remove development lib links.
+
+0.35_04 Unreleased.
         - Unlink dump files in tests.
 
 0.35_03 15/05/2009

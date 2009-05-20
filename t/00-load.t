@@ -10,6 +10,7 @@ BEGIN {
 }
 
 diag("Testing Test::Aggregate $Test::Aggregate::VERSION, Perl $], $^X");
+diag("... with Test::Builder $Test::Builder::VERSION");
 
 ok !exists $ENV{aggregated_current_script},
   'env variables should not hang around';
