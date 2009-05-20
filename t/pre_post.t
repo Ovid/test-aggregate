@@ -3,7 +3,6 @@
 use strict;
 use warnings;
 
-use lib '../schwern-test-more/lib/';
 use lib 'lib', 't/lib';
 use Test::Aggregate;
 
