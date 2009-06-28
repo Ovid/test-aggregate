@@ -21,7 +21,7 @@ my $builder = Module::Build->new(
     recommends => {
         'Data::Dump::Streamer' => 1.11,
         'Perl::Tidy'           => 20060614,
-        'Test::More'           => 0.8901,
+        'Test::More'           => '0.89_01',
     },
     add_to_cleanup     => ['Test-Aggregate-*'],
 );
