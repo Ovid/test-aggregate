@@ -16,5 +16,7 @@ t/aggregate.t
 t/lib/Slow/Loading/Module.pm
 xt/author/pod-coverage.t
 xt/author/pod.t
+t/nested.t
 t/pre_post.t
+t/pre_post_nested.t
 t/subs.t

@@ -6,11 +6,34 @@ use warnings;
 use Carp 'croak';
 use Test::Builder::Module;
 use Test::More;
+use File::Find;
 
 use vars qw(@ISA @EXPORT @EXPORT_OK $VERSION);
 @ISA    = qw(Test::Builder::Module);
 
-use File::Find;
+$VERSION = '0.35_06';
+
+BEGIN { 
+    $ENV{TEST_AGGREGATE} = 1;
+    *CORE::GLOBAL::exit = sub {
+        my ($package, $filename, $line) = caller;
+        print STDERR <<"        END_EXIT_WARNING";
+********
+WARNING!
+exit called under Test::Aggregate at:
+File:    $filename
+Package: $package
+Line:    $line
+WARNING!
+********
+        END_EXIT_WARNING
+        exit(@_);
+    };
+};
+
+END {   # for VMS
+    delete $ENV{TEST_AGGREGATE};
+}
 
 sub _code_attributes {
     qw/
@@ -171,4 +194,88 @@ sub _shuffle {
     }
     return;
 }
+
+sub _get_package {
+    my ( $class, $file ) = @_;
+    $file =~ s/\W//g;
+    return $file;
+}
+
 1;
+
+__END__
+
+=head1 NAME
+
+Test::Aggregate::Base - Base class for aggregated tests.
+
+=head1 VERSION
+
+Version 0.35_06
+
+=head1 SYNOPSIS
+
+    use base 'Test::Aggregate::base';
+
+    sub run { ... }
+
+
+=head1 DESCRIPTION
+
+This module is for internal use only.
+
+=head1 AUTHOR
+
+Curtis Poe, C<< <ovid at cpan.org> >>
+
+=head1 BUGS
+
+Please report any bugs or feature requests to
+C<bug-test-aggregate at rt.cpan.org>, or through the web interface at
+L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Test-Aggregate>.
+I will be notified, and then you'll automatically be notified of progress on
+your bug as I make changes.
+
+=head1 SUPPORT
+
+You can find documentation for this module with the perldoc command.
+
+    perldoc Test::Aggregate
+
+You can also look for information at:
+
+=over 4
+
+=item * AnnoCPAN: Annotated CPAN documentation
+
+L<http://annocpan.org/dist/Test-Aggregate>
+
+=item * CPAN Ratings
+
+L<http://cpanratings.perl.org/d/Test-Aggregate>
+
+=item * RT: CPAN's request tracker
+
+L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=Test-Aggregate>
+
+=item * Search CPAN
+
+L<http://search.cpan.org/dist/Test-Aggregate>
+
+=back
+
+=head1 ACKNOWLEDGEMENTS
+
+Many thanks to mauzo (L<http://use.perl.org/~mauzo/> for helping me find the
+'skip_all' bug.
+
+Thanks to Johan Lindström for pointing me to Apache::Registry.
+
+=head1 COPYRIGHT & LICENSE
+
+Copyright 2007 Curtis "Ovid" Poe, all rights reserved.
+
+This program is free software; you can redistribute it and/or modify it
+under the same terms as Perl itself.
+
+=cut

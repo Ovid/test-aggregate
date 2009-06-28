@@ -2,45 +2,20 @@ package Test::Aggregate;
 
 use warnings;
 use strict;
-
-use Test::Builder::Module;
-use Test::More;
 use Carp 'croak';
 
-use File::Find;
-
+use Test::More;
+use Test::Aggregate::Base;
 use vars qw(@ISA @EXPORT @EXPORT_OK $VERSION);
-@ISA    = qw(Test::Builder::Module);
+@ISA    = qw(Test::Aggregate::Base);
 @EXPORT = (@Test::More::EXPORT, 'run_this_test_program');
-
-BEGIN { 
-    $ENV{TEST_AGGREGATE} = 1;
-    *CORE::GLOBAL::exit = sub {
-        my ($package, $filename, $line) = caller;
-        print STDERR <<"        END_EXIT_WARNING";
-********
-WARNING!
-exit called under Test::Aggregate at:
-File:    $filename
-Package: $package
-Line:    $line
-WARNING!
-********
-        END_EXIT_WARNING
-        exit(@_);
-    };
-};
-
-END {   # for VMS
-    delete $ENV{TEST_AGGREGATE};
-}
-
 # controls whether or not we show individual test program pass/fail
 my %VERBOSE = (
     none     => 0,
     failures => 1,
     all      => 2,
 );
+my $BUILDER = Test::Builder->new;
 
 =head1 NAME
 
@@ -48,11 +23,11 @@ Test::Aggregate - Aggregate C<*.t> tests to make them run faster.
 
 =head1 VERSION
 
-Version 0.35_05
+Version 0.35_06
 
 =cut
 
-$VERSION = '0.35_05';
+$VERSION = '0.35_06';
 
 =head1 SYNOPSIS
 
@@ -285,164 +260,7 @@ the constructor.
 
 =cut
 
-sub _code_attributes {
-    qw/
-        setup
-        teardown
-        startup
-        shutdown
-    /;
-}
-
-sub new {
-    my ( $class, $arg_for ) = @_;
-
-    unless ( exists $arg_for->{dirs} || exists $arg_for->{tests} ) {
-        Test::More::BAIL_OUT("You must supply 'dirs' or 'tests'");
-    }
-    if ( exists $arg_for->{tests} && 'ARRAY' ne ref $arg_for->{tests} ) {
-        Test::More::BAIL_OUT(
-            "Argument for Test::Aggregate 'tests' key must be an array reference"
-        );
-    }
-        
-    $arg_for->{test_nowarnings} = 1 unless exists $arg_for->{test_nowarnings};
-    $arg_for->{set_filenames}   = 1 unless exists $arg_for->{set_filenames};
-    $arg_for->{findbin}         = 1 unless exists $arg_for->{findbin};
-    my $dirs = delete $arg_for->{dirs};
-    if ( defined $dirs ) {
-        $dirs = [$dirs] if 'ARRAY' ne ref $dirs;
-    }
-    else {
-        $dirs = [];
-    }
-
-    my $matching = qr//;
-    if ( $arg_for->{matching} ) {
-        $matching = delete $arg_for->{matching};
-        unless ( 'Regexp' eq ref $matching ) {
-            croak("Argument for 'matching' must be a pre-compiled regex");
-        }
-    }
-
-    my $has_code_attributes;
-    foreach my $attribute ( $class->_code_attributes ) {
-        if ( my $ref = $arg_for->{$attribute} ) {
-            if ( 'CODE' ne ref $ref ) {
-                croak("Attribute ($attribute) must be a code reference");
-            }
-            else {
-                $has_code_attributes++;
-            }
-        }
-    }
-
-    my $self = bless {
-        dirs              => $dirs,
-        matching          => $matching,
-        _no_streamer      => 0,
-        _packages         => [],
-        aggregate_program => $0,
-    } => $class;
-    $self->{$_} = delete $arg_for->{$_} foreach (
-        qw/
-        check_plan
-        dry
-        dump
-        findbin
-        set_filenames
-        shuffle
-        test_nowarnings
-        tests
-        tidy
-        verbose
-        /,
-        $class->_code_attributes
-    );
-    $self->{tests} ||= [];
-
-    if ( my @keys = keys %$arg_for ) {
-        local $" = ', ';
-        croak("Unknown keys to &new:  (@keys)");
-    }
-
-    if ($has_code_attributes) {
-        eval "use Data::Dump::Streamer";
-        if ( my $error = $@ ) {
-            $self->{_no_streamer} = 1;
-            if ( my $dump = $self->_dump ) {
-                warn <<"                END_WARNING";
-Dump file ($dump) cannot be generated.  A code attributes was requested but
-we cannot load Data::Dump::Streamer:  $error.
-                END_WARNING
-                $self->{dump} = '';
-            }
-        }
-    }
-
-    return $self;
-}
-
-# set from user data
-
-sub _check_plan      { shift->{check_plan} || 0 }
-sub _dump            { shift->{dump} || '' }
-sub _dry             { shift->{dry} }
-sub _should_shuffle  { shift->{shuffle} }
-sub _matching        { shift->{matching} }
-sub _set_filenames   { shift->{set_filenames} }
-sub _findbin         { shift->{findbin} }
-sub _dirs            { @{ shift->{dirs} } }
-sub _startup         { shift->{startup} }
-sub _shutdown        { shift->{shutdown} }
-sub _setup           { shift->{setup} }
-sub _teardown        { shift->{teardown} }
-sub _tests           { @{ shift->{tests} } }
-sub _tidy            { shift->{tidy} }
-sub _test_nowarnings { shift->{test_nowarnings} }
-
-sub _verbose        {
-    my $self = shift;
-    $self->{verbose} ? $self->{verbose} : 0;
-}
-
-# set from internal data
-sub _no_streamer    { shift->{_no_streamer} }
-sub _packages       { @{ shift->{_packages} } }
-
-sub _get_tests {
-    my $self = shift;
-    my @tests;
-    my $matching = $self->_matching;
-    if ( $self->_dirs ) {
-        find( {
-                no_chdir => 1,
-                wanted   => sub {
-                    push @tests => $File::Find::name if /\.t\z/ && /$matching/;
-                }
-        }, $self->_dirs );
-    }
-    push @tests => $self->_tests;
-    
-    if ( $self->_should_shuffle ) {
-        $self->_shuffle(@tests);
-    }
-    else {
-        @tests = sort @tests;
-    }
-    return @tests;
-}
-
-sub _shuffle {
-    my $self = shift;
-
-    # Fisher-Yates shuffle
-    my $i = @_;
-    while ($i) {
-        my $j = rand $i--;
-        @_[ $i, $j ] = @_[ $j, $i ];
-    }
-    return;
+sub _do_dry_run {
 }
 
 sub run {
@@ -481,12 +299,12 @@ sub run {
     }
 
     $self->_startup->() if $self->_startup;
-    my $builder = Test::Builder->new;
 
-    # some tests may have been run in BEGIN blocks
+    # some tests may have been run in BEGIN blocks.  This is deprecated and
+    # now warns
     my $tab = 'Test::Aggregate::Builder';
-    $builder->{$tab}{last_test} = @{ $builder->{Test_Results} } || 0;
-    $builder->{$tab}{aggregate_program} = $self->{aggregate_program};
+    $BUILDER->{$tab}{last_test} = @{ $BUILDER->{Test_Results} } || 0;
+    $BUILDER->{$tab}{aggregate_program} = $self->{aggregate_program};
 
     my $current_test = 0;
     my @packages     = $self->_packages;
@@ -502,8 +320,8 @@ sub run {
 
         # XXX this should be fine since these keys are not actually used
         # internally.
-        $builder->{XXX_test_failed}       = 0;
-        $builder->{TEST_MOST_test_failed} = 0;
+        $BUILDER->{XXX_test_failed}       = 0;
+        $BUILDER->{TEST_MOST_test_failed} = 0;
         $self->_teardown->() if $self->_teardown;
     }
     $self->_shutdown->() if $self->_shutdown;
@@ -531,7 +349,6 @@ sub run_this_test_program {
     my ( $package, $test, $current_test, $num_tests, $verbose ) = @_;
     Test::More::diag("******** running tests for $test ********") if $ENV{TEST_VERBOSE};
     my $error = eval { 
-        my $builder = Test::Builder->new;
         if ( my $reason = $builder->{'Test::Aggregate::Builder'}{skip_reason_for}{$package} ) {
             $builder->skip($reason);
             return;
@@ -725,12 +542,6 @@ sub _slurp {
     local *FH;
     open FH, "< $file" or die "Cannot read ($file): $!";
     return do { local $/; <FH> };
-}
-
-sub _get_package {
-    my ( $class, $file ) = @_;
-    $file =~ s/\W//g;
-    return $file;
 }
 
 sub _test_builder_override {

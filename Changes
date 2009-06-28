@@ -1,5 +1,9 @@
 Revision history for Test-Aggregate
 
+0.35_06 28/06/2009
+        - Added support for nested TAP via Test::Aggregate::Nested.
+        - I really, really need to get a real release out.
+
 0.35_05 20/05/2009
         - Removed bogus test file throwing my counts off.  No wonder all tests
           were failing for people!

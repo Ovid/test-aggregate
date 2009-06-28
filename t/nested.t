@@ -6,10 +6,13 @@ use warnings;
 use lib 'lib', 't/lib';
 use Test::Aggregate::Nested;
 
+use Test::More;
+plan skip_all => 'Need Test::More::subtest() for this test'
+    unless Test::More->can('subtest');
+
 my $dump = 'dump.t';
 my $tests = Test::Aggregate::Nested->new(
     {   verbose         => 2,
-        dump            => $dump,
         shuffle         => 1,
         dirs            => 'aggtests',
         set_filenames   => 1,
@@ -20,5 +23,5 @@ my $tests = Test::Aggregate::Nested->new(
 );
 $tests->run;
 
-ok -f $dump, '... and we should have written out a dump file';
-unlink $dump or warn "Cannot unlink ($dump): $!";
+#ok -f $dump, '... and we should have written out a dump file';
+#unlink $dump or warn "Cannot unlink ($dump): $!";

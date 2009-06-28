@@ -16,11 +16,12 @@ my $builder = Module::Build->new(
     requires => {
         'Test::Harness'    => 3.09,
         'Test::NoWarnings' => 0,
-        'FindBin'          => 0,
+        'FindBin'          => 1.47,
     },
     recommends => {
         'Data::Dump::Streamer' => 1.11,
         'Perl::Tidy'           => 20060614,
+        'Test::More'           => 0.8901,
     },
     add_to_cleanup     => ['Test-Aggregate-*'],
 );
