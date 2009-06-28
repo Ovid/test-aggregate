@@ -14,9 +14,3 @@ use Slow::Loading::Module;
 }
 
 is whee(), 'whee!', 'subs work!';
-my $x = 17;
-
-sub foo {
-    my $y = shift;
-    return $y + $x;
-}
