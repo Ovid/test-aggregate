@@ -1,5 +1,8 @@
 Revision history for Test-Aggregate
 
+0.35_07
+        - Added missing files to MANIFEST.
+
 0.35_06 28/06/2009
         - Added support for nested TAP via Test::Aggregate::Nested.
         - I really, really need to get a real release out.
