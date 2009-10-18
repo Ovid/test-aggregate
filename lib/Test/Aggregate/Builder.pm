@@ -68,28 +68,17 @@ use Test::Builder;
         my $tb = Test::Builder->new;
         $tb->{'Test::Aggregate::Builder'}{ignore_timing_blocks} = 1;
         my $tests = $tb->current_test;
-        $DB::single = 1;
         $tb->expected_tests($tests);
         if ( $DONE_TESTING ) {
             $tb->$DONE_TESTING($tests);
         }
         else {
-            $tb->_print("1..$tests\n");
+            $tb->_print("1..$tests\n") unless $tb->{Have_Output_Plan};
         }
     }
 }
 
 no warnings 'redefine';
-
-# Need a tailing plan
-END {
-
-    unless ( Test::Builder->can('done_testing') ) {
-        # This works because it's a singleton
-        my $builder = Test::Builder->new;
-        my $tests   = $builder->current_test;
-    }
-}
 
 # The following is done to get around the fact that deferred plans are not
 # supported.  Unfortunately, there's no clean way to override this, but this

@@ -34,6 +34,9 @@ $VERSION = '0.35_07';
 
 =head1 DESCRIPTION
 
+B<ALPHA WARNING>:  this is alpha code.  Conceptually it is superior to
+C<Test::Aggregate>, but in reality, it might not be.  We'll see.
+
 This module is almost identical to C<Test::Aggregate> and will in the future
 be the preferred way of aggregating tests (until someone comes up with
 something better :)

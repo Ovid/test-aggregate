@@ -1,6 +1,13 @@
 Revision history for Test-Aggregate
 
-0.35_07
+0.36    18/10/2009
+        - Mark for production.
+        - Removed 'dump.t' files in tests.
+        - Improve Test::Aggregate::Nested docs.
+        - Removed some dead code.
+        - Suppress multiple plans (#48352, Chisel Wright)
+
+0.35_07 19/08/2009
         - Added missing files to MANIFEST.
 
 0.35_06 28/06/2009

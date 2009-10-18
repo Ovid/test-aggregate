@@ -6,10 +6,11 @@ use warnings;
 use lib 'lib', 't/lib';
 use Test::Aggregate;
 
-my $dump = 'dump.t';
+my $dump  = 'dump.t';
 my $tests = Test::Aggregate->new(
-    {   verbose         => 2,
-        dump            => $dump,
+    {
+        verbose         => 2,
+#        dump            => $dump,
         shuffle         => 1,
         dirs            => 'aggtests',
         set_filenames   => 1,
@@ -20,5 +21,5 @@ my $tests = Test::Aggregate->new(
 );
 $tests->run;
 
-ok -f $dump, '... and we should have written out a dump file';
+#ok -f $dump, '... and we should have written out a dump file';
 #unlink $dump or warn "Cannot unlink ($dump): $!";

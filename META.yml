@@ -6,18 +6,20 @@ author:
 abstract: Aggregate C<*.t> tests to make them run faster.
 license: perl
 resources:
-  license: ~
+  license: http://dev.perl.org/licenses/
+build_requires:
+  Test::Most: 0.21
+  Test::Simple: 0.94
 requires:
   FindBin: 1.47
   Test::Harness: 3.09
   Test::NoWarnings: 0
-build_requires:
-  Test::Most: 0.21
-  Test::Simple: 0.74
 recommends:
   Data::Dump::Streamer: 1.11
   Perl::Tidy: 20060614
   Test::More: 0.89_01
+configure_requires:
+  Module::Build: 0.35
 provides:
   Test::Aggregate:
     file: lib/Test/Aggregate.pm
@@ -31,7 +33,7 @@ provides:
   Test::Aggregate::Nested:
     file: lib/Test/Aggregate/Nested.pm
     version: 0.35_07
-generated_by: Module::Build version 0.32
+generated_by: Module::Build version 0.35
 meta-spec:
-  url: http://module-build.sourceforge.net/META-spec-v1.2.html
-  version: 1.2
+  url: http://module-build.sourceforge.net/META-spec-v1.4.html
+  version: 1.4

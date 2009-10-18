@@ -10,8 +10,8 @@ my $builder = Module::Build->new(
     dist_author       => 'Curtis "Ovid" Poe <ovid@cpan.org>',
     dist_version_from => 'lib/Test/Aggregate.pm',
     build_requires    => {
-        'Test::Simple' => 0.74,    # we fail on the common 0.62
-        'Test::Most'   => 0.21,,
+        'Test::Simple' => 0.94,    # we fail on the common 0.62
+        'Test::Most'   => 0.21,
     },
     requires => {
         'Test::Harness'    => 3.09,

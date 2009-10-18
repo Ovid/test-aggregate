@@ -12,11 +12,11 @@ my $tests = Test::Aggregate->new(
     {
         dirs     => 'aggtests',
         matching => qr/subs/,
-        dump     => $dump,
+#        dump     => $dump,
     }
 );
 $tests->run;
 my $tests_run = Test::Builder->new->current_test;
 is $tests_run, 1,
   '... and we should only run as many tests as are in the matching tests';
-unlink $dump or warn "Cannot unlink ($dump): $!";
+#unlink $dump or warn "Cannot unlink ($dump): $!";

@@ -449,7 +449,7 @@ $findbin
         #$test_code =~ s/\n__(?:DATA|END)__\n$//s;
 
         if ( $test_code =~ /^(__(?:DATA|END)__)/m ) {
-            Test::More::BAIL_OUT("Test $test not allowed to have $1 token");
+            Test::More::BAIL_OUT("Test $test not allowed to have $1 token (Test::Aggregate::Nested supports them)");
         }
 
         my $package   = $self->_get_package($test);
@@ -703,6 +703,7 @@ run.
 =item * C<__END__> and C<__DATA__> tokens.
 
 These won't work and the tests will call BAIL_OUT() if these tokens are seen.
+However, this limitation does not apply to L<Test::Aggregate::Nested>.
 
 =item * C<BEGIN> and C<END> blocks.
 
