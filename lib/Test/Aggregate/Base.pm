@@ -8,10 +8,11 @@ use Test::Builder::Module;
 use Test::More;
 use File::Find;
 
-use vars qw(@ISA @EXPORT @EXPORT_OK $VERSION);
+use vars qw(@ISA @EXPORT @EXPORT_OK);
 @ISA    = qw(Test::Builder::Module);
 
-$VERSION = '0.36';
+our $VERSION = '0.361';
+$VERSION = eval $VERSION;
 
 BEGIN { 
     $ENV{TEST_AGGREGATE} = 1;
@@ -211,7 +212,7 @@ Test::Aggregate::Base - Base class for aggregated tests.
 
 =head1 VERSION
 
-Version 0.36
+Version 0.361
 
 =head1 SYNOPSIS
 

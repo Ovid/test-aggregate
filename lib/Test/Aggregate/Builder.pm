@@ -3,19 +3,18 @@ package Test::Aggregate::Builder;
 use strict;
 use warnings;
 
-our $VERSION;
-
 =head1 NAME
 
 Test::Aggregate::Builder - Internal overrides for Test::Builder.
 
 =head1 VERSION
 
-Version 0.36
+Version 0.361
 
 =cut
 
-$VERSION = '0.36';
+our $VERSION = '0.361';
+$VERSION = eval $VERSION;
 
 =head1 SYNOPSIS
 

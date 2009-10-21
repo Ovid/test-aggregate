@@ -17,11 +17,12 @@ Test::Aggregate::Nested - Aggregate C<*.t> tests to make them run faster.
 
 =head1 VERSION
 
-Version 0.36
+Version 0.361
 
 =cut
 
-$VERSION = '0.36';
+our $VERSION = '0.361';
+$VERSION = eval $VERSION;
 
 =head1 SYNOPSIS
 

@@ -6,7 +6,7 @@ use Carp 'croak';
 
 use Test::More;
 use Test::Aggregate::Base;
-use vars qw(@ISA @EXPORT @EXPORT_OK $VERSION);
+use vars qw(@ISA @EXPORT @EXPORT_OK);
 @ISA    = qw(Test::Aggregate::Base);
 @EXPORT = (@Test::More::EXPORT, 'run_this_test_program');
 # controls whether or not we show individual test program pass/fail
@@ -23,11 +23,12 @@ Test::Aggregate - Aggregate C<*.t> tests to make them run faster.
 
 =head1 VERSION
 
-Version 0.36
+Version 0.361
 
 =cut
 
-$VERSION = '0.36';
+our $VERSION = '0.361';
+$VERSION = eval $VERSION;
 
 =head1 SYNOPSIS
 
