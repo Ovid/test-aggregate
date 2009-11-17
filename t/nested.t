@@ -17,7 +17,6 @@ my $tests = Test::Aggregate::Nested->new(
         dirs            => 'aggtests',
         set_filenames   => 1,
         findbin         => 1,
-        check_plan      => 1,
         test_nowarnings => 0,
     }
 );

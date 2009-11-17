@@ -1,5 +1,7 @@
 aggtests/check_plan.t
+aggtests/done_testing.t
 aggtests/findbin.t
+aggtests/no_plan.t
 aggtests/skip_all.t
 aggtests/slow_load.t
 aggtests/subs.t

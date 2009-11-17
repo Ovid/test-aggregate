@@ -1,7 +1,15 @@
 Revision history for Test-Aggregate
 
+0.362
+        - Removed broken "check_plan" from Test::Aggregate.  It was always
+          dodgy and really doesn't contribute much and the latest release
+          broke with 'no_plan'.  We now warn if we see this.
+        - Minimum Test::More is now 0.94.  This gives us more robust nested
+          TAP.
+
 0.361   20/10/2009
-        - Keep Makefile.PL in synch.
+        - Keep Makefile.PL in synch.  Reported by Andreas Koenig
+          (https://rt.cpan.org/Ticket/Display.html?id=50673)
 
 0.36    18/10/2009
         - Mark for production.

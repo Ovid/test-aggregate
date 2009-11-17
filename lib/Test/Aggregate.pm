@@ -44,7 +44,9 @@ $VERSION = eval $VERSION;
 =head1 DESCRIPTION
 
 B<WARNING>:  this is ALPHA code.  The interface is not guaranteed to be
-stable.
+stable.  Further, check out L<Test::Aggregate::Nested> (included with this
+distribution).  It's a more robust implemenation which does not have the same
+limitations as C<Test::Aggregate>.
 
 A common problem with many test suites is that they can take a long time to
 run.  The longer they run, the less likely you are to run the tests.  This
@@ -125,7 +127,6 @@ test for this with the C<< $ENV{TEST_AGGREGATE} >> variable:
          matching        => qr/customer/, # optional
          set_filenames   => 0,            # optional and not recommended
          tidy            => 1,            # optional and experimental
-         check_plan      => 1,            # optional and experimental
          test_nowarnings => 0,            # optional and experimental
      }
  );
@@ -235,17 +236,9 @@ slow and possibly buggy.
 If the value of this argument is the name of a file, assumes that this file is
 a C<.perltidyrc> file.
 
-=item * C<check_plan>
-
-If set to a true value, this will force C<Test::Aggregate> to attempt to
-verify that any test which set a plan actually ran the correct number of
-tests.  The code is rather tricky, so this is experimental.
-
 =item * C<test_nowarnings>
 
-Disables C<Test::NoWarnings> (fails if the module cannot be loaded).  This is
-often used in conjunction with C<check_plan> to subtract the extra test added
-by this module.
+Disables C<Test::NoWarnings> (fails if the module cannot be loaded).
 
 This is experimental and somewhat problematic.  Let me know if there are any
 problems.
@@ -350,7 +343,7 @@ sub run_this_test_program {
     my ( $package, $test, $current_test, $num_tests, $verbose ) = @_;
     Test::More::diag("******** running tests for $test ********") if $ENV{TEST_VERBOSE};
     my $error = eval { 
-        if ( my $reason = $builder->{'Test::Aggregate::Builder'}{skip_reason_for}{$package} ) {
+        if ( my $reason = $builder->{'Test::Aggregate::Builder'}{skip_all}{$package} ) {
             $builder->skip($reason);
             return;
         }
@@ -469,16 +462,6 @@ $findbin
             ? "local \$0 = '$test';"
             : '';
 
-        if ( $self->_check_plan ) {
-            $test_code .= <<"            END";
-my \$tab   = Test::Builder->new->{'Test::Aggregate::Builder'};
-my \$plan  = \$tab->{plan_for}{'$package'} || 0;
-my \$file  = \$tab->{file_for}{'$package'};
-my \$tests = \$tab->{tests_run}{'$package'} || 0;
-Test::More::is( \$tests, \$plan, "Test (\$file) should have the correct plan" );
-            END
-        }
-
         $test_packages .= <<"        END_CODE";
 {
 $separator beginning of $test $separator
@@ -548,7 +531,6 @@ sub _slurp {
 sub _test_builder_override {
     my $self = shift;
 
-    my $check_plan              = $self->_check_plan;
     my $disable_test_nowarnings = '';
     if ( !$self->_test_nowarnings ) {
         $disable_test_nowarnings = <<'        END_CODE';
@@ -575,7 +557,6 @@ use Test::Aggregate::Builder;
 my \$BUILDER;
 BEGIN { 
     \$BUILDER = Test::Builder->new;
-    \$BUILDER->{'Test::Aggregate::Builder'}{check_plan} = $check_plan 
 };
 $disable_test_nowarnings;
     END_CODE
@@ -720,12 +701,9 @@ time:  it makes it easier to figure out which one has caused the problem.
 
 =item * C<no_plan>
 
-Unfortunately, due to how this works, the plan is always C<no_plan>.  If
-C<Test::Builder> implements "deferred plans", we can get a bit more safety.
-See
+Unfortunately, due to how this works, the plan is always C<no_plan>.
 L<http://groups.google.com/group/perl.qa/browse_thread/thread/d58c49db734844f4/cd18996391acc601?#cd18996391acc601>
-for more information.  We now have an experimental 'check_plan' attribute to
-work around this.
+for more information.
 
 =item * C<Test::NoWarnings>
 
@@ -744,9 +722,8 @@ As an alternative, you can also disable it with:
     test_nowarnings => 0,
  });
 
-This is needed when you use C<check_plan> and have C<Test::NoWarnings> used.
-This is because we do work internally to subtract the extra test added by
-C<Test::NoWarnings>.  It's painful and experimental.  Good luck.
+We do work internally to subtract the extra test added by C<Test::NoWarnings>.
+It's painful and experimental.  Good luck.
     
 =item * C<Variable "$x" will not stay shared at (eval ...>
 
@@ -769,6 +746,9 @@ Write this:
      my ( $y, $x ) = @_;
      return $y + $x;
  }
+
+However, consider L<Test::Aggregate::Nested>.  This warning does not apply
+with that module.
 
 =item * Singletons
 

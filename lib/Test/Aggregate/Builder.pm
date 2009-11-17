@@ -96,11 +96,11 @@ sub Test::Builder::no_header { 1 }
 
     sub Test::Builder::plan {
         delete $_[0]->{Have_Plan};
+        $_[0]->{'Test::Aggregate::Builder'} ||= {};
         my $tab_builder = $_[0]->{'Test::Aggregate::Builder'};
-
         if ( 'skip_all' eq ( $_[1] || '' ) ) {
             my $callpack = caller(1);
-            $tab_builder->{skip_reason_for}{$callpack} = $_[2];
+            $tab_builder->{skip_all}{$callpack} = $_[2];
             return;
         }
 
@@ -167,7 +167,7 @@ Pass:  $test
             tests_run              => {},
             file_for               => {},
             test_nowarnings_loaded => {},
-            skip_reason_for        => {},
+            skip_all               => {},
             check_plan             => undef,
             last_test              => undef,
         };

@@ -95,9 +95,12 @@ sub new {
         _packages         => [],
         aggregate_program => $0,
     } => $class;
+
+    if ( delete $arg_for->{check_plan} ) {
+        Carp::carp("'check_plan' is now deprecated and a no-op.");
+    }
     $self->{$_} = delete $arg_for->{$_} foreach (
         qw/
-        check_plan
         dry
         dump
         findbin
@@ -136,7 +139,6 @@ we cannot load Data::Dump::Streamer:  $error.
 
 # set from user data
 
-sub _check_plan      { shift->{check_plan} || 0 }
 sub _dump            { shift->{dump} || '' }
 sub _dry             { shift->{dry} }
 sub _should_shuffle  { shift->{shuffle} }

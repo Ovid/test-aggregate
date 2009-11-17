@@ -29,7 +29,8 @@ $VERSION = eval $VERSION;
     use Test::Aggregate::Nested;
 
     my $tests = Test::Aggregate::Nested->new( {
-        dirs => $aggregate_test_dir,
+        dirs    => $aggregate_test_dir,
+        verbose => 1,
     } );
     $tests->run;
 
@@ -119,9 +120,11 @@ sub run {
 
     my @tests = $self->_get_tests;
 
-    plan tests => scalar @tests;
+    my ( $current, $total ) = ( 0, scalar @tests );
+    plan tests => $total;
     $test_phase{startup}->();
     for my $test (@tests) {
+        $current++;
         no warnings 'uninitialized';
         local %ENV = %ENV;
         local $/   = $/;
@@ -137,6 +140,9 @@ sub run {
         $test_phase{setup}->();
         $REINIT_FINDBIN->() if $self->_findbin;
         my $package = $self->_get_package($test);
+        if ( $self->_verbose ) {
+            Test::More::diag("Running tests for $test ($current out of $total)");
+        }
         eval <<"        END";
         package $package;
         Test::Aggregate::Nested::subtest("Tests for $test", sub { do \$test });
