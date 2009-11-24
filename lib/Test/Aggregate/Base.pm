@@ -11,7 +11,7 @@ use File::Find;
 use vars qw(@ISA @EXPORT @EXPORT_OK);
 @ISA    = qw(Test::Builder::Module);
 
-our $VERSION = '0.362';
+our $VERSION = '0.363';
 $VERSION = eval $VERSION;
 
 BEGIN { 
@@ -214,7 +214,7 @@ Test::Aggregate::Base - Base class for aggregated tests.
 
 =head1 VERSION
 
-Version 0.362
+Version 0.363
 
 =head1 SYNOPSIS
 

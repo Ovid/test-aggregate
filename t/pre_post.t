@@ -19,13 +19,20 @@ $SIG{__WARN__} = sub {
 
 my $dump = 'dump.t';
 
+my $found_it;
 my $tests = Test::Aggregate->new(
     {
         dirs     => 'aggtests',
         findbin  => 1,
         startup  => sub { $startup++ },
         shutdown => sub { $shutdown++ },
-        setup    => sub { $setup++ },
+        setup    => sub {
+            my $file = shift;
+            if ( $file =~ /slow_load\.t$/ ) {
+                $found_it = 1;
+            }
+            $setup++;
+        },
         teardown => sub { $teardown++ },
 #        dump     => $dump,
     }
@@ -36,4 +43,5 @@ is $shutdown, 1, '... as should shutdown';
 is $setup,    7, 'Setup should be called once for each test program';
 is $teardown, 7, '... as should teardown';
 #unlink $dump or warn "Cannot unlink ($dump): $!";
-done_testing() if __PACKAGE__->can('done_testing');
+ok $found_it, '... and file names should be passed to setup';
+done_testing();

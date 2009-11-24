@@ -1,5 +1,8 @@
 Revision history for Test-Aggregate
 
+0.363  24/11/2009
+        - Pass current test name to setup and teardown.
+
 0.362  17/11/2009
         - Removed broken "check_plan" from Test::Aggregate.  It was always
           dodgy and really doesn't contribute much and the latest release

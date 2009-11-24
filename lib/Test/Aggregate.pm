@@ -23,11 +23,11 @@ Test::Aggregate - Aggregate C<*.t> tests to make them run faster.
 
 =head1 VERSION
 
-Version 0.362
+Version 0.363
 
 =cut
 
-our $VERSION = '0.362';
+our $VERSION = '0.363';
 $VERSION = eval $VERSION;
 
 =head1 SYNOPSIS
@@ -306,7 +306,7 @@ sub run {
     foreach my $data (@packages) {
         $current_test++;
         my ( $test, $package ) = @$data;
-        $self->_setup->() if $self->_setup;
+        $self->_setup->($test) if $self->_setup;
         run_this_test_program( $package => $test, $current_test, $total_tests, 2 );
         if ( my $error = $@ ) {
             Test::More::ok( 0, "Error running ($test):  $error" );
@@ -316,7 +316,7 @@ sub run {
         # internally.
         $BUILDER->{XXX_test_failed}       = 0;
         $BUILDER->{TEST_MOST_test_failed} = 0;
-        $self->_teardown->() if $self->_teardown;
+        $self->_teardown->($test) if $self->_teardown;
     }
     $self->_shutdown->() if $self->_shutdown;
 }
@@ -625,18 +625,22 @@ called in an END block.
 =item * C<setup>
 
  setup => sub { 
+    my $filename = shift;
     # this gets run before each test program.
  },
 
-The setup function will be run before every test program.
+The setup function will be run before every test program.  The name of the
+test file will be passed as the first argument.
 
 =item * C<teardown>
 
  teardown => sub {
+    my $filename = shift;
     # this gets run after every test program.
  }
 
-The teardown function gets run after every test program.
+The teardown function gets run after every test program.  The name of the test
+file will be passed as the first argument.
 
 =back
 
