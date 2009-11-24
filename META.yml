@@ -1,6 +1,6 @@
 ---
 name: Test-Aggregate
-version: 0.361
+version: 0.362
 author:
   - 'Curtis "Ovid" Poe <ovid@cpan.org>'
 abstract: Aggregate C<*.t> tests to make them run faster.
@@ -17,22 +17,22 @@ requires:
 recommends:
   Data::Dump::Streamer: 1.11
   Perl::Tidy: 20060614
-  Test::More: 0.89_01
+  Test::More: 0.94
 configure_requires:
   Module::Build: 0.35
 provides:
   Test::Aggregate:
     file: lib/Test/Aggregate.pm
-    version: 0.361
+    version: 0.362
   Test::Aggregate::Base:
     file: lib/Test/Aggregate/Base.pm
-    version: 0.361
+    version: 0.362
   Test::Aggregate::Builder:
     file: lib/Test/Aggregate/Builder.pm
-    version: 0.361
+    version: 0.362
   Test::Aggregate::Nested:
     file: lib/Test/Aggregate/Nested.pm
-    version: 0.361
+    version: 0.362
 generated_by: Module::Build version 0.35
 meta-spec:
   url: http://module-build.sourceforge.net/META-spec-v1.4.html
