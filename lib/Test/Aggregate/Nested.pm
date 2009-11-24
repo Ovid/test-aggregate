@@ -137,7 +137,7 @@ sub run {
 
         # restrict this scope as much as possible
         local $0 = $test;
-        $test_phase{setup}->();
+        $test_phase{setup}->($test);
         $REINIT_FINDBIN->() if $self->_findbin;
         my $package = $self->_get_package($test);
         if ( $self->_verbose ) {
@@ -148,7 +148,7 @@ sub run {
         Test::Aggregate::Nested::subtest("Tests for $test", sub { do \$test });
         END
         diag $@ if $@;
-        $test_phase{teardown}->();
+        $test_phase{teardown}->($test);
     }
     $test_phase{shutdown}->();
 }

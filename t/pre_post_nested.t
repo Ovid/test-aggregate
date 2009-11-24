@@ -7,7 +7,7 @@ use lib 'lib', 't/lib';
 use Test::More;
 
 plan +Test::More->can('subtest')
-  ? ( tests => 5 )
+  ? ( tests => 6 )
   : ( skip_all => 'Need Test::More::subtest() for this test' );
 use Test::Aggregate::Nested;
 
@@ -22,6 +22,7 @@ $SIG{__WARN__} = sub {
     CORE::warn($warning);
 };
 
+my $found_it;
 subtest 'nested tests' => sub {
     my $tests = Test::Aggregate::Nested->new(
         {
@@ -29,7 +30,13 @@ subtest 'nested tests' => sub {
             findbin  => 1,
             startup  => sub { $startup++ },
             shutdown => sub { $shutdown++ },
-            setup    => sub { $setup++ },
+            setup    => sub {
+                my $file = shift;
+                if ( $file =~ /slow_load\.t$/ ) {
+                    $found_it = 1;
+                }
+                $setup++;
+            },
             teardown => sub { $teardown++ },
             shuffle  => 1,
         }
@@ -40,3 +47,4 @@ is $startup,  1, 'Startup should be called once';
 is $shutdown, 1, '... as should shutdown';
 is $setup,    7, 'Setup should be called once for each test program';
 is $teardown, 7, '... as should teardown';
+ok $found_it, '... and file names should be passed to setup';
